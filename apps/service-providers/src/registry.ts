@@ -1,3 +1,5 @@
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import type { ProviderAdapter, ProviderRegistry } from "@sentinel/schemas";
 
 /**
@@ -8,10 +10,41 @@ import type { ProviderAdapter, ProviderRegistry } from "@sentinel/schemas";
  * A "failed" provider is a demo knob: it stays in the registry but is hidden
  * from the routeable catalog so the router/fallback path can be demoed.
  * The interface itself lives in packages/schemas (shared contract).
+ *
+ * The `failed` set is persisted to `statePath` (default .data/failed.json) so
+ * that fail/recover knob state survives `tsx watch` hot-reloads. Without this,
+ * every file save that triggers a process restart wipes the failed set and the
+ * next run ignores your fail clicks.
  */
-export function createInMemoryRegistry(): ProviderRegistry {
+export function createInMemoryRegistry(
+  statePath = ".data/failed.json",
+): ProviderRegistry {
   const adapters = new Map<string, ProviderAdapter>();
-  const failed = new Set<string>();
+
+  // ─── Persist helpers ────────────────────────────────────────────────────────
+
+  function loadFailed(): Set<string> {
+    try {
+      if (!existsSync(statePath)) return new Set();
+      const raw = readFileSync(statePath, "utf8");
+      const parsed: unknown = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return new Set();
+      return new Set(parsed.filter((x): x is string => typeof x === "string"));
+    } catch {
+      return new Set();
+    }
+  }
+
+  function saveFailed(set: Set<string>): void {
+    try {
+      mkdirSync(dirname(statePath), { recursive: true });
+      writeFileSync(statePath, JSON.stringify([...set]), "utf8");
+    } catch {
+      // Non-fatal — worst case the knob resets on the next restart.
+    }
+  }
+
+  const failed = loadFailed();
 
   return {
     register(adapter) {
@@ -38,12 +71,14 @@ export function createInMemoryRegistry(): ProviderRegistry {
     markFailed(providerId) {
       if (!adapters.has(providerId)) return false;
       failed.add(providerId);
+      saveFailed(failed);
       return true;
     },
 
     recover(providerId) {
       if (!adapters.has(providerId)) return false;
       failed.delete(providerId);
+      saveFailed(failed);
       return true;
     },
 
