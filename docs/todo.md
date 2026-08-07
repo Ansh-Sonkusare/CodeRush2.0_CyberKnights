@@ -28,13 +28,15 @@ running demo/typecheck, not just written.
 - [x] Bandit optimizer (`BanditOptimizer` — UCB1) written in `src/engine/banditOptimizer.ts`
 - [x] `npm run typecheck` clean; all legacy demos still pass
 
-## Phase 3 — Live trace UI
+## Phase 3 — Live trace UI ✅ done
 
-- [ ] React + React Flow scaffold
-- [ ] WebSocket event feed from executor
-- [ ] Live node states (quote/pay/settle), blocked nodes flash with guard reason
-- [ ] Interactive approve/deny on pause
-- [ ] Retire static dashboard
+- [x] React + React Flow scaffold (Vite)
+- [x] WebSocket event feed from executor (trace-server broadcasts `ExecutorBus` events)
+- [x] Live node states (quote/pay/settle), blocked nodes flash with guard reason
+- [x] Interactive approve/deny on pause
+- [x] Retire static dashboard — bandit eval card ported to live UI panel
+- [x] Verified: `ui` production build clean + WS smoke over all 6 scenarios
+      (happy, 3 attacks, tight-cap approve, tight-cap deny)
 
 ## Phase 4 — LLM planner
 
@@ -51,7 +53,7 @@ running demo/typecheck, not just written.
 - [x] `npm run demo5` — baseline vs 6 real-HTTP bandit runs with one shared bandit (explore → exploit)
 - [x] `npm run bandit-eval` — seeded held-out harness, common random numbers, cumulative delivered-reward
 - [x] Scenarios: `adversarial-holdout` (bandit wins 5/5, ~87% more reward, 91% lower regret) + `control-truthful` (bandit ≈ baseline, only exploration cost)
-- [x] Report written to `data/bandit-report.json`; served at `/api/bandit-report` with a dashboard card
+- [x] Report written to `data/bandit-report.json`; served at `/api/bandit-report` (dashboard card, later ported to the live UI panel in Phase 3)
 - [x] `npm run typecheck` clean; all legacy demos still pass
 
 ## Phase 6 — Multi-scheme + stale quote

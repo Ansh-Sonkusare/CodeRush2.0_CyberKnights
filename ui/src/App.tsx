@@ -194,6 +194,14 @@ export default function App() {
               </ul>
             )}
           </section>
+
+          <section className="panel">
+            <h2>
+              Bandit eval report{" "}
+              <span className="muted">(refresh with npm run bandit-eval)</span>
+            </h2>
+            <BanditReport />
+          </section>
         </aside>
       </div>
     </div>
@@ -207,5 +215,85 @@ function EventLine({ e }: { e: WsEvent }) {
       <span className="ev-name">{e.event}</span>
       {node && <span className="ev-node">{node}</span>}
     </>
+  );
+}
+
+interface ArmAggregate {
+  total_cost: number;
+  reward_sum: number;
+  quality_sum: number;
+  latency_sum: number;
+  regret: number;
+  n: number;
+}
+
+interface BanditScenario {
+  name: string;
+  rounds: number;
+  totals: { baseline: ArmAggregate; bandit: ArmAggregate };
+}
+
+function BanditReport() {
+  const [scenarios, setScenarios] = useState<BanditScenario[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch(`${API}/api/bandit-report`)
+      .then((r) => r.json())
+      .then((d: { error?: string; scenarios?: BanditScenario[] }) => {
+        if (d.error) setError(d.error);
+        else setScenarios(d.scenarios ?? []);
+      })
+      .catch(() => setError("bandit report unavailable"));
+  }, []);
+
+  if (error) return <p className="muted">{error}</p>;
+  if (!scenarios) return <p className="muted">loading…</p>;
+
+  return (
+    <div className="bandit-report">
+      {scenarios.map((s) => {
+        const win =
+          s.totals.bandit.reward_sum > s.totals.baseline.reward_sum
+            ? "bandit"
+            : "baseline";
+        return (
+          <div key={s.name} className="bandit-scenario">
+            <div className="bandit-head">
+              <span className="bandit-name">{s.name}</span>
+              <span className="muted">({s.rounds} rounds, seeded)</span>
+              <span className={`verdict verdict-${win}`}>verdict: {win}</span>
+            </div>
+            <table className="bandit-table">
+              <thead>
+                <tr>
+                  <th>arm</th>
+                  <th>reward</th>
+                  <th>cost</th>
+                  <th>regret</th>
+                  <th>quality</th>
+                  <th>latency</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(["baseline", "bandit"] as const).map((arm) => {
+                  const t = s.totals[arm];
+                  return (
+                    <tr key={arm}>
+                      <td>{arm}</td>
+                      <td>{t.reward_sum.toFixed(0)}</td>
+                      <td>${t.total_cost.toFixed(2)}</td>
+                      <td>{t.regret.toFixed(1)}</td>
+                      <td>{(t.quality_sum / Math.max(1, t.n)).toFixed(2)}</td>
+                      <td>{Math.round(t.latency_sum / Math.max(1, t.n))}ms</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        );
+      })}
+    </div>
   );
 }

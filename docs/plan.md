@@ -14,7 +14,7 @@ Executor loop, treasury (reserve/settle/release + approval), simulated scoped
 wallet with idempotency, baseline weighted route optimizer, JSON-file ledger,
 3 mock providers, failure injection + fallback, static dashboard.
 
-- Demos: `npm run preview`, `npm run demo2`, `npm run demo3`, `npm run dashboard`
+- Demos: `npm run preview`, `npm run demo2`, `npm run demo3`
 - **Gap it left:** provider responses were never structurally validated (no Zod),
   so a provider could in theory inject policy/scope fields straight into state.
 
@@ -65,17 +65,26 @@ the result body. All caught structurally by the guard before touching state.
 
 ---
 
-## Phase 3 — Live trace UI ⏳
+## Phase 3 — Live trace UI ✅
 
 React + React Flow + WebSocket. Live task-graph node states (quote/pay/settle),
 blocked-attack nodes flash red with the guard's reason inline, interactive
-approve/deny. Replaces the static dashboard.
+approve/deny. Replaces the static dashboard (retired; its bandit eval card was
+ported into the live UI as a panel).
 
-- [ ] React + React Flow scaffold (Vite)
-- [ ] WebSocket event feed from executor
-- [ ] Live node states (quote/pay/settle), blocked nodes flash with guard reason
-- [ ] Interactive approve/deny on pause
-- [ ] Retire static dashboard
+- [x] React + React Flow scaffold (Vite)
+- [x] WebSocket event feed from executor (`trace-server` broadcasts every
+      `ExecutorBus` event; `ui` consumes it via `useWs`)
+- [x] Live node states (quote/pay/settle), blocked nodes flash with guard reason
+      (blocked node turns red + `flash` animation, violation reason inline)
+- [x] Interactive approve/deny on pause (tight-cap scenario pauses; approve
+      raises the cap, deny marks the wave `declared_failure`)
+- [x] Retire static dashboard — `scripts/dashboard.ts` deleted; bandit eval card
+      ported to the live UI as a "Bandit eval report" panel (served by
+      `trace-server` at `/api/bandit-report`)
+- [x] Verified end-to-end: `ui` production build clean; WS smoke asserts the
+      event sequence for happy / attack-search / attack-extract / attack-rank /
+      tight-cap approve / tight-cap deny across `trace-server`.
 
 ---
 
@@ -111,7 +120,8 @@ this phase wires it into the executor and proves it beats baseline.
       bandit loses by ~3.7%, i.e. it does not win when there is nothing to learn).
 - [x] Cumulative cost/regret report in dashboard — `npm run bandit-eval` writes
       `data/bandit-report.json`, served at `/api/bandit-report` and rendered in
-      a "Bandit eval report" card on the dashboard.
+      a "Bandit eval report" card on the dashboard (later ported to the live
+      trace UI panel in Phase 3).
 - [x] `npm run demo5` runs the wired executor over real HTTP: a baseline run vs
       6 bandit runs sharing one `BanditOptimizer`, showing explore → exploit and
       the learned arm stats.

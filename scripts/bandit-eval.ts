@@ -316,7 +316,7 @@ async function main(): Promise<void> {
   const outPath = join(process.cwd(), "data", "bandit-report.json");
   await mkdir(join(process.cwd(), "data"), { recursive: true });
   await writeFile(outPath, JSON.stringify(report, null, 2), "utf8");
-  console.log(`\nreport written to ${outPath} (served by the dashboard at /api/bandit-report)`);
+  console.log(`\nreport written to ${outPath} (served by the trace server at /api/bandit-report)`);
 }
 
 main().catch((err) => {
