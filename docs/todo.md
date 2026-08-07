@@ -3,7 +3,7 @@
 Living checklist. Top of the list = current work. Ticked = verified by a
 running demo/typecheck, not just written.
 
-## Current — Phase 1: Schemas & flow
+## Phase 1 — Schemas & flow ✅ done
 
 - [x] docs/ folder (this file, plan, context, guard-contract)
 - [x] Add `zod` dependency
@@ -15,13 +15,18 @@ running demo/typecheck, not just written.
 - [x] `npm run guard` demo: happy path passes guard + budget mutation blocked end-to-end
 - [x] `npm run typecheck` clean; legacy demos (`preview`, `demo2`, `demo3`) still pass
 
-## Phase 2 — Adversarial providers live
+## Phase 2 — Adversarial providers live ✅ done
 
-- [ ] Budget mutation — armed on a provider, blocked structurally, re-routed (extends Phase 1 demo)
-- [ ] Scope expansion — same, `scope_expansion` violation
-- [ ] Prompt injection — same, `prompt_injection` violation
-- [ ] Receipt forgery — same, `receipt_forgery` violation
-- [ ] All four visible as `blocked_policy_violation` ledger rows
+- [x] Budget mutation — `evil-search` (port 4104): injects `budget_cap`, `raise_cap`, `approve_overspend` → blocked `budget_mutation`
+- [x] Scope expansion — `evil-extract` (port 4105): injects `scope_token`, `wallet_scope`, `grant_access` → blocked `scope_expansion`
+- [x] Prompt injection — `evil-rank` (port 4106): injects `__instruction`, `__override`, `agent_instruction` → blocked `prompt_injection`
+- [x] All three visible as `blocked_policy_violation` in `npm run guard` demo
+- [x] Adversarial providers auto-start alongside normal providers in `startAllProviders()`
+- [x] Guard integrated into `paidCall.ts` via `guardResponse()` (result) + `validateTerms()` + `validateReceipt()`
+- [x] Violation appended to `ledger.violations[]` per row; visible in dashboard
+- [x] Dashboard: adversarial provider chips (evil-search, evil-extract, evil-rank), violation badges, blocked-attack card
+- [x] Bandit optimizer (`BanditOptimizer` — UCB1) written in `src/engine/banditOptimizer.ts`
+- [x] `npm run typecheck` clean; all legacy demos still pass
 
 ## Phase 3 — Live trace UI
 
@@ -39,11 +44,11 @@ running demo/typecheck, not just written.
 - [ ] Hardcoded-graph fallback on schema failure/timeout
 - [ ] Verify planner can never emit budgets/scopes
 
-## Phase 5 — Bandit optimizer
+## Phase 5 — Bandit optimizer (wire up + eval harness)
 
-- [ ] Thompson sampling / UCB1 provider choice
+- [ ] Wire `BanditOptimizer` into executor (`useBandit` flag)
 - [ ] Held-out eval harness vs baseline
-- [ ] Cumulative cost/regret report
+- [ ] Cumulative cost/regret report in dashboard
 
 ## Phase 6 — Multi-scheme + stale quote
 

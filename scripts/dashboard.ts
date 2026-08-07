@@ -3,7 +3,7 @@ import { startAllProviders, stopAllProviders, ServerHandle } from "./start-provi
 import { Ledger } from "../src/ledger/ledger.js";
 import { SimulatedWallet } from "../src/wallet/wallet.js";
 import { TASK_GRAPH } from "../src/config/taskGraph.js";
-import { PROVIDER_CATALOG } from "../src/config/providers.js";
+import { PROVIDER_CATALOG, ADVERSARIAL_CATALOG } from "../src/config/providers.js";
 import { Treasury } from "../src/treasury/treasury.js";
 import { TaskExecutor } from "../src/engine/executor.js";
 
@@ -22,6 +22,7 @@ async function runDemo(): Promise<Record<string, unknown>> {
   const ex = new TaskExecutor({ ledger, wallet, treasury, graph: TASK_GRAPH });
   const summary = await ex.run();
   lastWallet = wallet;
+  const allRows = ledger.findByTaskId(TASK_GRAPH.task_id);
   const rows = summary.steps.map((e) => ({
     node: e.step.id,
     label: e.step.label,
@@ -29,19 +30,25 @@ async function runDemo(): Promise<Record<string, unknown>> {
     price: e.price ?? 0,
     tx_ref: e.txRef ?? "-",
     outcome: e.status,
+    violations: allRows
+      .filter((r) => r.node_id === e.step.id && r.violations?.length)
+      .flatMap((r) => r.violations ?? []),
   }));
-  const failed = ledger
-    .findByTaskId(TASK_GRAPH.task_id)
+  const failed = allRows
     .filter((r) => r.outcome === "declared_failure")
     .map((r) => ({
       node: r.node_id,
       provider: r.provider_id,
       tx_ref: r.stages.settlement.detail.tx_ref ?? "-",
+      violation_type: r.violations?.[0]?.type ?? null,
+      violation_msg: r.violations?.[0]?.message ?? null,
     }));
+  const violations = allRows.flatMap((r) => r.violations ?? []);
   return {
     task_id: TASK_GRAPH.task_id,
     rows,
     failed,
+    violations,
     total_spent: summary.budget.spent,
     budget_cap: summary.budget.cap,
     trace: await ledger.exportTask(TASK_GRAPH.task_id),
@@ -49,9 +56,12 @@ async function runDemo(): Promise<Record<string, unknown>> {
 }
 
 async function providerHealth(): Promise<Record<string, unknown>[]> {
-  const entries = [...new Map(PROVIDER_CATALOG.map((p) => [p.base_url, p])).values()];
+  const ALL_PROVIDERS = [
+    ...new Map(PROVIDER_CATALOG.map((p) => [p.base_url, p])).values(),
+    ...new Map(ADVERSARIAL_CATALOG.map((p) => [p.base_url, p])).values(),
+  ];
   const health = await Promise.all(
-    entries.map(async (e) => {
+    ALL_PROVIDERS.map(async (e) => {
       try {
         const res = await fetch(`${e.base_url}/health`);
         const body = (await res.json()) as Record<string, unknown>;
@@ -117,13 +127,16 @@ const HTML = `<!doctype html>
   body { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background:#0f1115; color:#e6e6e6; margin:0; padding:32px; }
   h1 { font-size:20px; letter-spacing:.5px; margin:0 0 4px; }
   .sub { color:#8b93a7; font-size:13px; margin-bottom:24px; }
-  .chip { display:inline-block; padding:4px 10px; border-radius:999px; font-size:12px; margin-right:8px; border:1px solid #2a2f3a; }
+  .chip { display:inline-block; padding:4px 10px; border-radius:999px; font-size:12px; margin-right:8px; margin-bottom:4px; border:1px solid #2a2f3a; }
   .chip.ok { background:#0d2b1a; color:#4ade80; border-color:#1c4a2e; }
   .chip.down { background:#2b0d0d; color:#f87171; border-color:#4a1c1c; }
   .chip.fail { background:#2b1d0d; color:#fbbf24; border-color:#4a3a1c; }
+  .chip.evil { background:#1a0d2b; color:#c084fc; border-color:#3a1c4a; }
+  .chip.evil-blocked { background:#2b0d0d; color:#f87171; border-color:#4a1c1c; }
   button { background:#2563eb; color:#fff; border:none; border-radius:6px; padding:10px 18px; font-size:14px; cursor:pointer; font-family:inherit; }
-  button.small { padding:4px 10px; font-size:12px; margin-right:6px; }
+  button.small { padding:4px 10px; font-size:12px; margin-right:6px; margin-bottom:4px; }
   button.danger { background:#b91c1c; }
+  button.evil-btn { background:#7c3aed; }
   button:disabled { background:#334155; cursor:wait; }
   table { border-collapse:collapse; width:100%; margin-top:16px; font-size:13px; }
   th, td { text-align:left; padding:8px 12px; border-bottom:1px solid #22262f; }
@@ -134,30 +147,52 @@ const HTML = `<!doctype html>
   pre { background:#0a0c10; border:1px solid #22262f; border-radius:6px; padding:16px; font-size:12px; overflow:auto; max-height:480px; }
   .card { background:#161a22; border:1px solid #22262f; border-radius:8px; padding:16px; margin-bottom:16px; }
   .row { display:flex; gap:16px; align-items:center; flex-wrap:wrap; }
+  .violation-badge { display:inline-block; padding:2px 8px; border-radius:4px; font-size:11px; background:#2b0d0d; color:#f87171; border:1px solid #4a1c1c; margin-left:6px; }
+  .outcome-blocked { color:#f87171; font-weight:bold; }
+  .outcome-success { color:#4ade80; }
+  .violations-card { border-color:#4a1c1c !important; }
+  .section-label { color:#8b93a7; font-size:12px; text-transform:uppercase; letter-spacing:.5px; margin-bottom:8px; }
 </style>
 </head>
 <body>
   <h1>x402 Multi-Provider Agent Payment Router &amp; Treasury</h1>
-  <div class="sub" id="taskinfo">task t-1 &middot; 5 steps &middot; 3 mock providers &middot; 1 parallel branch</div>
-  <div class="row">
+  <div class="sub" id="taskinfo">task t-1 &middot; 5 steps &middot; 3 mock providers &middot; 1 parallel branch &middot; 3 adversarial providers (guarded)</div>
+
+  <div class="section-label">Normal Providers</div>
+  <div class="row" style="margin-bottom:12px">
     <span class="chip ok" id="p0">search-a ?</span>
     <span class="chip ok" id="p1">lingo-b ?</span>
     <span class="chip ok" id="p2">fastrank-c ?</span>
   </div>
-  <div class="sub" style="margin:10px 0 0">failure injection (kills provider after 402, before result):</div>
-  <div class="row">
+
+  <div class="section-label">Adversarial Providers (policy guard active)</div>
+  <div class="row" style="margin-bottom:12px">
+    <span class="chip evil" id="p3">evil-search ?</span>
+    <span class="chip evil" id="p4">evil-extract ?</span>
+    <span class="chip evil" id="p5">evil-rank ?</span>
+  </div>
+
+  <div class="sub" style="margin:0 0 4px">Failure injection (kills provider after 402, before result):</div>
+  <div class="row" style="margin-bottom:8px">
     <button class="small danger" onclick="setFail('search-a')">fail search-a</button>
     <button class="small" onclick="setFail('lingo-b')">fail lingo-b</button>
     <button class="small" onclick="setFail('fastrank-c')">fail fastrank-c</button>
     <button class="small" onclick="recoverAll()">recover all</button>
     <button class="small" onclick="replay()">check no-double-pay</button>
   </div>
+
   <div class="card" style="margin-top:16px">
     <div class="row">
       <button id="run" onclick="runDemo()">Run 5-step task</button>
       <span class="sub" id="status" style="margin:0">providers booting&hellip;</span>
     </div>
   </div>
+
+  <div class="card" id="violations-card" style="display:none; border-color:#4a1c1c">
+    <h1 style="font-size:15px; color:#f87171">&#x26D4; Policy Guard — Blocked Attacks</h1>
+    <div id="violations-content"></div>
+  </div>
+
   <div class="card">
     <h1 style="font-size:15px">Ledger</h1>
     <div id="ledger"><pre>Run the task to populate the ledger.</pre></div>
@@ -184,8 +219,15 @@ const HTML = `<!doctype html>
         const el = $('p' + i);
         if (!el) return;
         const failing = p.fail_mode === 'crash_on_complete';
-        el.textContent = p.provider_id + ' ' + (p.ok ? (failing ? 'FAILING' : 'UP') : 'DOWN');
-        el.className = 'chip ' + (p.ok ? (failing ? 'fail' : 'ok') : 'down');
+        const isEvil = p.adversarial_mode;
+        let label = p.provider_id + ' ' + (p.ok ? (failing ? 'FAILING' : (isEvil ? 'ARMED' : 'UP')) : 'DOWN');
+        el.textContent = label;
+        if (isEvil) {
+          el.className = 'chip ' + (p.ok ? 'evil' : 'evil-blocked');
+          el.title = 'adversarial_mode: ' + p.adversarial_mode;
+        } else {
+          el.className = 'chip ' + (p.ok ? (failing ? 'fail' : 'ok') : 'down');
+        }
       });
     } catch {}
   }
@@ -205,7 +247,7 @@ const HTML = `<!doctype html>
     const res = await fetch('/api/replay');
     const d = await res.json();
     if (d.error) { $('status').textContent = 'replay: ' + d.error; return; }
-    $('status').textContent = 'replay ' + d.key + ' -> tx_ref ' + d.tx_ref + ', first_payment=' + d.first_payment + ' => ' + (d.no_double_pay ? 'NO DOUBLE-PAY' : 'DOUBLE-PAY (BAD)');
+    $('status').textContent = 'replay ' + d.key + ' -> tx_ref ' + d.tx_ref + ', first_payment=' + d.first_payment + ' => ' + (d.no_double_pay ? 'NO DOUBLE-PAY ✓' : 'DOUBLE-PAY (BAD) ✗');
   }
   async function runDemo() {
     $('run').disabled = true;
@@ -215,13 +257,33 @@ const HTML = `<!doctype html>
       const d = await res.json();
       let rows = '';
       for (const r of d.rows) {
-        rows += '<tr><td>'+r.node+'</td><td>'+r.label+'</td><td>'+r.provider+'</td><td class="money">$'+r.price.toFixed(4)+'</td><td>'+r.tx_ref+'</td><td>'+r.outcome+'</td></tr>';
+        const hasViolation = r.violations && r.violations.length > 0;
+        const outcomeClass = hasViolation ? 'outcome-blocked' : (r.outcome === 'success' ? 'outcome-success' : '');
+        const violationBadge = hasViolation
+          ? r.violations.map(v => '<span class="violation-badge">&#x26D4; ' + v.type + '</span>').join('')
+          : '';
+        rows += '<tr><td>'+r.node+'</td><td>'+r.label+'</td><td>'+r.provider+'</td><td class="money">$'+r.price.toFixed(4)+'</td><td>'+r.tx_ref+'</td><td class="'+outcomeClass+'">'+r.outcome+violationBadge+'</td></tr>';
       }
       $('ledger').innerHTML = '<table><tr><th>node</th><th>step</th><th>provider</th><th>price</th><th>tx_ref</th><th>outcome</th></tr>'+rows+'</table>';
+
+      // Show violations card
+      if (d.violations && d.violations.length > 0) {
+        let vcontent = '<table><tr><th>id</th><th>type</th><th>stage</th><th>rejected fields</th><th>message</th></tr>';
+        for (const v of d.violations) {
+          vcontent += '<tr><td style="color:#8b93a7">'+v.id+'</td><td style="color:#f87171;font-weight:bold">'+v.type+'</td><td>'+v.stage+'</td><td style="color:#fbbf24">'+v.rejected_fields.join(', ')+'</td><td>'+v.message+'</td></tr>';
+        }
+        vcontent += '</table>';
+        $('violations-card').style.display = 'block';
+        $('violations-content').innerHTML = vcontent;
+      } else {
+        $('violations-card').style.display = 'none';
+      }
+
       if (d.failed && d.failed.length) {
         let f = '';
         for (const x of d.failed) {
-          f += '<tr><td>'+x.node+'</td><td>'+x.provider+'</td><td>'+x.tx_ref+'</td><td>declared_failure</td></tr>';
+          const vtype = x.violation_type ? ' <span class="violation-badge">&#x26D4; '+x.violation_type+'</span>' : '';
+          f += '<tr><td>'+x.node+'</td><td>'+x.provider+'</td><td>'+x.tx_ref+'</td><td>declared_failure'+vtype+'</td></tr>';
         }
         $('failed').style.display = 'block';
         $('failedtable').innerHTML = '<tr><th>node</th><th>provider</th><th>tx_ref</th><th>outcome</th></tr>' + f;
@@ -232,7 +294,12 @@ const HTML = `<!doctype html>
       $('budget').innerHTML = 'spent <span class="money">$'+d.total_spent.toFixed(4)+'</span> of <span class="money">$'+d.budget_cap.toFixed(4)+'</span> cap'
         + '<div class="bar"><div style="width:'+pct.toFixed(1)+'%"></div></div>';
       $('trace').textContent = JSON.stringify(JSON.parse(d.trace), null, 2);
-      $('status').textContent = 'done — ' + (d.failed && d.failed.length ? d.failed.length + ' failed attempt(s) fell back, ' : '') + 'all traceable';
+      const attackCount = d.violations ? d.violations.length : 0;
+      const failCount = d.failed && d.failed.length ? d.failed.length : 0;
+      $('status').textContent = 'done'
+        + (attackCount ? ' — \u26D4 ' + attackCount + ' attack(s) blocked by guard' : '')
+        + (failCount ? ' — ' + failCount + ' provider failure(s) fell back' : '')
+        + ' — all traceable';
     } catch (e) {
       $('status').textContent = 'error: ' + e;
     } finally {
@@ -244,6 +311,7 @@ const HTML = `<!doctype html>
 </script>
 </body>
 </html>`;
+
 
 function send(res: http.ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, { "Content-Type": "application/json" });

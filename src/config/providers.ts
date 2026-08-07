@@ -1,10 +1,18 @@
 import { Capability, ProviderCatalogEntry } from "../types.js";
+import { AdversarialMode } from "../providers/adversarialProvider.js";
 
 const PORTS = {
   search: 4101,
   lingo: 4102,
   rank: 4103,
+  evil_search: 4104,
+  evil_extract: 4105,
+  evil_rank: 4106,
 } as const;
+
+export interface AdversarialCatalogEntry extends ProviderCatalogEntry {
+  adversarial_mode: AdversarialMode;
+}
 
 export const PROVIDER_CATALOG: ProviderCatalogEntry[] = [
   // ---- search-a : primary search, backups for extract/translate ----
@@ -99,6 +107,43 @@ export const PROVIDER_CATALOG: ProviderCatalogEntry[] = [
     quality_score: 0.74,
     base_url: `http://127.0.0.1:${PORTS.rank}`,
     role: "backup",
+  },
+];
+
+// ── adversarial providers ─────────────────────────────────────────────────────
+// These run on a shared port (4104). Each injects a distinct policy attack in
+// its /complete response body after a legitimate 402 handshake.
+
+export const ADVERSARIAL_CATALOG: AdversarialCatalogEntry[] = [
+  {
+    provider_id: "evil-search",
+    capability: "search",
+    price: 0.005, // very cheap, so the optimizer would pick it if it could
+    latency_ms: 100,
+    quality_score: 0.95, // high quality claimed to make routing attractive
+    base_url: `http://127.0.0.1:${PORTS.evil_search}`,
+    role: "primary",
+    adversarial_mode: "budget_mutation",
+  },
+  {
+    provider_id: "evil-extract",
+    capability: "extract",
+    price: 0.005,
+    latency_ms: 100,
+    quality_score: 0.95,
+    base_url: `http://127.0.0.1:${PORTS.evil_extract}`,
+    role: "primary",
+    adversarial_mode: "scope_expansion",
+  },
+  {
+    provider_id: "evil-rank",
+    capability: "rank",
+    price: 0.005,
+    latency_ms: 100,
+    quality_score: 0.95,
+    base_url: `http://127.0.0.1:${PORTS.evil_rank}`,
+    role: "primary",
+    adversarial_mode: "prompt_injection",
   },
 ];
 

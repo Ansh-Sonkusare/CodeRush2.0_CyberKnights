@@ -3,7 +3,7 @@
 Working docs for the Multi-Provider Agent Payment Router & Treasury (INF-01).
 The two source PRDs live at the repo root (`PRD.md` = "Sentinel" framing,
 `PRD-ORCH.md` = "orchestrator" framing). These docs are the working plan we
-actually execute.
+actually execute, updated with every change.
 
 | File | Purpose |
 |---|---|
@@ -12,16 +12,27 @@ actually execute.
 | `todo.md` | Living, ordered checklist of current + upcoming work |
 | `guard-contract.md` | The trust boundary — exactly what a provider response is allowed to touch |
 
+## Current status
+
+| Phase | Status | Demo |
+|---|---|---|
+| 0 — MVP baseline | ✅ done | `npm run preview`, `npm run demo2`, `npm run demo3` |
+| 1 — Schemas & guard | ✅ done | `npm run guard` |
+| 2 — Adversarial providers | ✅ done | `npm run guard` / `npm run phase4` |
+| 3 — Live trace UI | ⏳ next | — |
+
 ## How to run
 
 ```bash
 npm install
-npm run typecheck      # TS sanity
+npm run typecheck      # TS sanity check (must be clean)
 npm run preview        # happy-path walkthrough (legacy)
 npm run demo2          # executor / treasury / approval (legacy)
 npm run demo3          # failure injection / fallback (legacy)
-npm run guard          # Phase 1 — schemas & flow guard demo
-npm run dashboard      # local dashboard on :4200
+npm run guard          # Phase 2 — adversarial attack demo (all 3 attacks blocked)
+npm run phase4         # alias for npm run guard
+npm run dashboard      # local dashboard on :4200 (includes adversarial chips + violation UI)
 ```
 
-The provider mock servers start/stop automatically inside each demo script.
+The provider mock servers (ports 4101–4103) and adversarial servers
+(ports 4104–4106) start and stop automatically inside each demo script.

@@ -1,6 +1,6 @@
 import { mkdir, writeFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { LedgerRow } from "../types.js";
+import { LedgerRow, GuardViolation } from "../types.js";
 import { SCHEMA_VERSION } from "./schema.js";
 
 const DATA_DIR = join(process.cwd(), "data");
@@ -10,10 +10,10 @@ export class Ledger {
   private rows: LedgerRow[] = [];
   private nextId = 1;
 
-  constructor(private persist: boolean = true) {}
+  constructor(private shouldPersist: boolean = true) {}
 
   async init(): Promise<void> {
-    if (!this.persist) return;
+    if (!this.shouldPersist) return;
     await mkdir(DATA_DIR, { recursive: true });
     try {
       const raw = await readFile(LEDGER_FILE, "utf8");
@@ -78,6 +78,20 @@ export class Ledger {
     return [...this.rows];
   }
 
+  /** Append a guard violation to the violations array of an existing row. */
+  async appendViolation(ledgerId: string, violation: GuardViolation): Promise<void> {
+    const row = this.get(ledgerId);
+    if (!row) throw new Error(`ledger row ${ledgerId} not found`);
+    if (!row.violations) row.violations = [];
+    row.violations.push(violation);
+    await this.persistNow();
+  }
+
+  /** Public alias for persistNow — used by paidCall helpers. */
+  async persist(): Promise<void> {
+    await this.persistNow();
+  }
+
   async exportTask(taskId: string, outPath?: string): Promise<string> {
     const rows = this.findByTaskId(taskId);
     const trace = {
@@ -95,8 +109,9 @@ export class Ledger {
     return json;
   }
 
+
   private async persistNow(): Promise<void> {
-    if (!this.persist) return;
+    if (!this.shouldPersist) return;
     await mkdir(DATA_DIR, { recursive: true });
     const snapshot = JSON.stringify({ nextId: this.nextId, rows: this.rows }, null, 2);
     await writeFile(LEDGER_FILE, snapshot, "utf8");
