@@ -56,7 +56,10 @@ async function main(): Promise<void> {
       }
       const next: ProviderAdapter[] = [];
       for (const entry of await res.json()) {
-        if (entry.failed === true) continue;
+        // Include all providers — failed ones stay in the routing pool and fail
+        // at the HTTP layer (503 from the mock routes / unreachable for real
+        // remotes). The node machine's retry/fallback path handles the failure.
+        // Only skip entries that can't be parsed as valid catalog entries.
         try {
           next.push(new RemoteProviderAdapter(fromWire(entry)));
         } catch {

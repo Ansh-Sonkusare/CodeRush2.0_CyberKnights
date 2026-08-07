@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import {
   ok,
+  err,
   microAlgo,
   type Capability,
   type DeliverResponse,
@@ -27,6 +28,13 @@ import {
  *   - "scope_expansion": deliver() result carries `wallet_key` → guard blocks
  *     with ViolationType "scope_expansion".
  *   - "normal": well-behaved result, guard passes.
+ *
+ * `failed` is the demo fail knob. When true, quote() returns a service-level
+ * error (simulating HTTP 503 from a real external provider that is down). The
+ * orchestrator still routes to this provider — it is visible in the catalog —
+ * so the node machine's retry/fallback path handles the failure exactly as it
+ * would for a real provider outage. This is different from hiding the provider
+ * from the router, which would bypass the fallback machinery entirely.
  */
 export type MockProviderMode = "normal" | "budget_mutation" | "scope_expansion";
 
@@ -98,6 +106,7 @@ export class MockProvider implements ProviderAdapter {
   readonly baseUrl: string;
   readonly role: "primary";
   private readonly spec: MockProviderSpec;
+  private _failed = false;
 
   constructor(spec: MockProviderSpec) {
     this.spec = spec;
@@ -110,7 +119,28 @@ export class MockProvider implements ProviderAdapter {
     this.baseUrl = spec.baseUrl;
   }
 
+  /** Demo knob: simulate a service-level outage. quote() will return an error. */
+  setFailed(): void {
+    this._failed = true;
+  }
+
+  /** Demo knob: restore normal operation. */
+  setRecovered(): void {
+    this._failed = false;
+  }
+
+  get isFailed(): boolean {
+    return this._failed;
+  }
+
   async quote(_goal: string): Promise<Result<QuoteResponse, ProviderError>> {
+    if (this._failed) {
+      return err({
+        kind: "timeout",
+        message: `${this.providerId}: service unavailable (simulated outage)`,
+        providerUrl: this.baseUrl,
+      });
+    }
     return ok({
       invoice_id: `inv-${this.providerId}-${randomUUID().slice(0, 8)}`,
       provider_id: this.providerId,
@@ -130,6 +160,13 @@ export class MockProvider implements ProviderAdapter {
     paymentRef: string,
     input?: Record<string, unknown>,
   ): Promise<Result<DeliverResponse, ProviderError>> {
+    if (this._failed) {
+      return err({
+        kind: "deliver_failed",
+        message: `${this.providerId}: service unavailable (simulated outage)`,
+        providerUrl: this.baseUrl,
+      });
+    }
     await new Promise((resolve) => setTimeout(resolve, this.latencyHintMs));
 
     let result = resultFor(this.spec, input);
@@ -153,8 +190,10 @@ export class MockProvider implements ProviderAdapter {
 
   async health(): Promise<{ ok: boolean; detail?: string }> {
     return {
-      ok: true,
-      detail: `${this.providerId} (in-process mock, mode=${this.spec.mode})`,
+      ok: !this._failed,
+      detail: this._failed
+        ? `${this.providerId} (simulated outage)`
+        : `${this.providerId} (in-process mock, mode=${this.spec.mode})`,
     };
   }
 }
