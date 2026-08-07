@@ -103,6 +103,19 @@ export function createProvidersApp(registry: ProviderRegistry) {
     },
   );
 
+  // Recover all failed providers at once — useful for demo resets.
+  app.post("/providers/recover-all", (c) => {
+    const reg = c.get("registry");
+    const recovered: string[] = [];
+    for (const adapter of reg.list()) {
+      if (reg.isFailed(adapter.providerId)) {
+        reg.recover(adapter.providerId);
+        recovered.push(adapter.providerId);
+      }
+    }
+    return c.json({ recovered });
+  });
+
   // ─── In-process mock provider HTTP surface ────────────────────────────────
   // The orchestrator builds RemoteProviderAdapters from the catalog, so every
   // routeable provider must speak HTTP. These routes forward quote/deliver/
