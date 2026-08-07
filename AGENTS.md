@@ -185,7 +185,10 @@ guard-passed, ledger-stamped results.
 | UI dev server | `cd ui && npm run dev` | http://localhost:5173 |
 | UI production build | `cd ui && npm run build` | `tsc` + `vite build` |
 
-First run: `npm install` at the root (and in `ui/`). The static `dashboard`
+First run: `npm install` at the root (and in `ui/`), or `pnpm install` — pnpm
+is supported too; its approved build scripts live in `pnpm-workspace.yaml`
+under `allowBuilds` (`esbuild`, `@google/genai`, `protobufjs`), so `pnpm run`
+does not fail its deps-status `pnpm install`. The static `dashboard`
 was retired in Phase 3 in favor of the live trace UI (`ui/` + `trace-server`).
 
 ## 7. Boundaries

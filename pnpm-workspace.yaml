@@ -1,0 +1,6 @@
+allowBuilds:
+  '@google/genai': true
+  esbuild: true
+  protobufjs: true
+minimumReleaseAgeExclude:
+  - ws@8.21.3
