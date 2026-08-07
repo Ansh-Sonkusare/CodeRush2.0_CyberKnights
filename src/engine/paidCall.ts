@@ -1,8 +1,9 @@
 import { Capability, ProviderCatalogEntry } from "../types.js";
 import { Ledger } from "../ledger/ledger.js";
 import { SimulatedWallet } from "../wallet/wallet.js";
-import { PROVIDER_CATALOG } from "../config/providers.js";
+import { PROVIDER_CATALOG, ADVERSARIAL_CATALOG } from "../config/providers.js";
 import { createLedgerRow, newStage } from "../ledger/schema.js";
+import { validateTerms, validateReceipt, guardResponse } from "../guard/guard.js";
 
 export interface PaidCallResult {
   ledgerId: string;
@@ -63,9 +64,9 @@ export function idempotencyKey(
  */
 export async function runPaidCall(opts: PaidCallOptions): Promise<PaidCallResult> {
   const { ledger, wallet, task_id, node_id, capability, provider_id } = opts;
-  const entry = PROVIDER_CATALOG.find(
-    (p) => p.provider_id === provider_id && p.capability === capability,
-  );
+  const entry =
+    PROVIDER_CATALOG.find((p) => p.provider_id === provider_id && p.capability === capability) ??
+    ADVERSARIAL_CATALOG.find((p) => p.provider_id === provider_id && p.capability === capability);
   if (!entry) throw new Error(`no catalog entry for ${provider_id}/${capability}`);
 
   const ik = idempotencyKey(task_id, node_id, provider_id);
@@ -115,7 +116,22 @@ async function runPaidCallBody(args: {
   if (inv.status !== 402) {
     throw new Error(`provider ${args.provider_id}: expected 402, got ${inv.status}`);
   }
-  const terms = inv.body as Record<string, unknown>;
+  const rawTerms = inv.body as Record<string, unknown>;
+
+  // Guard: validate 402 terms strictly
+  const termsResult = validateTerms(rawTerms);
+  if (!termsResult.ok) {
+    const violation = termsResult.violation;
+    await ledger.updateStage(
+      row.ledger_id,
+      "402_terms",
+      newStage("402_terms", "failed", { violation }),
+    );
+    await ledger.appendViolation(row.ledger_id, violation);
+    await ledger.setOutcome(row.ledger_id, "declared_failure");
+    throw new Error(`guard blocked terms: ${violation.type} — ${violation.message}`);
+  }
+  const terms = termsResult.data;
   await ledger.updateStage(
     row.ledger_id,
     "402_terms",
@@ -162,13 +178,49 @@ async function runPaidCallBody(args: {
     result: Record<string, unknown>;
     receipt: Record<string, unknown>;
   };
+
+  // 5) Guard — the ONLY door into the execution context.
+  //    Structural rejection happens here, BEFORE the response touches state.
+  const guardResult = guardResponse(capability, doneBody.result);
+  if (!guardResult.ok) {
+    // Record the violation in the ledger row
+    await ledger.appendViolation(row.ledger_id, guardResult.violation);
+    await ledger.updateStage(
+      row.ledger_id,
+      "response",
+      newStage("response", "failed", {
+        guard_blocked: true,
+        violation_type: guardResult.violation.type,
+        violation_message: guardResult.violation.message,
+        rejected_fields: guardResult.violation.rejected_fields,
+      }),
+    );
+    throw new Error(
+      `guard: blocked_policy_violation [${guardResult.violation.type}] ` +
+        `from ${args.provider_id}: ${guardResult.violation.message}`,
+    );
+  }
+
   await ledger.updateStage(
     row.ledger_id,
     "response",
-    newStage("response", "received", doneBody.result),
+    newStage("response", "received", guardResult.data),
   );
 
-  // 5) receipt
+  // 6) receipt
+  // Guard: validate receipt shape and check for forgery (tx_ref mismatch)
+  const receiptGuard = validateReceipt(doneBody.receipt, settlement.tx_ref);
+  if (!receiptGuard.ok) {
+    const violation = receiptGuard.violation;
+    await ledger.updateStage(
+      row.ledger_id,
+      "receipt",
+      newStage("receipt", "failed", { violation }),
+    );
+    await ledger.appendViolation(row.ledger_id, violation);
+    await ledger.setOutcome(row.ledger_id, "declared_failure");
+    throw new Error(`guard blocked receipt: ${violation.type} — ${violation.message}`);
+  }
   await ledger.updateStage(
     row.ledger_id,
     "receipt",
@@ -185,7 +237,7 @@ async function runPaidCallBody(args: {
       first_payment: settlement.first_payment,
       amount: settlement.amount,
     },
-    response: doneBody.result,
+    response: guardResult.data,
     receipt: doneBody.receipt,
   };
 }
