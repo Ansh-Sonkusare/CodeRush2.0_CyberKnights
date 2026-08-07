@@ -343,3 +343,42 @@ button.danger { background: var(--red); color: #fff; font-weight: bold; }
   0%, 100% { background: var(--panel-2); }
   50% { background: #2b0d0d; }
 }
+
+/* ── bandit eval report ─────────────────────────────────────────────────── */
+.bandit-report {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+}
+
+.bandit-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.bandit-name { font-size: 13px; font-weight: bold; }
+
+.verdict { font-size: 11px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--border); }
+.verdict-bandit { background: #0d2b1a; color: #4ade80; border-color: #1c4a2e; }
+.verdict-baseline { background: #2b1d0d; color: #fbbf24; border-color: #4a3a1c; }
+
+.bandit-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.bandit-table th, .bandit-table td {
+  text-align: left;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.bandit-table th { color: var(--muted); font-weight: 500; }
+.bandit-table td:first-child { color: var(--muted); }
+.bandit-table td:nth-child(2) { color: var(--green); }
+.bandit-table td:nth-child(3) { color: var(--amber); }

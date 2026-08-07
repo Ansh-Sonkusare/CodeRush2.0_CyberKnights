@@ -85,9 +85,12 @@ RECONCILE  ledger row closed: quote → auth → payment → settlement → resp
   attack payloads).
 - `src/config/providers.ts` + `src/config/taskGraph.ts` — provider catalog and the
   default 5-step task graph.
-- `scripts/` — runnable demos (`preview`, `demo2`, `demo3`, `guard`), the static
-  dashboard (`dashboard`), the live-trace server (`trace-server`).
-- `ui/` — React + React Flow live-trace UI (Phase 3; **in progress**, see docs).
+- `scripts/` — runnable demos (`preview`, `demo2`, `demo3`, `guard`, `demo5`),
+  the eval harness (`bandit-eval`), the live-trace server (`trace-server`).
+- `ui/` — React + React Flow live-trace UI (Phase 3 ✅): task graph with live
+  node states, blocked nodes flash red with the guard reason, interactive
+  approve/deny, and a bandit eval report panel. Talks to `trace-server` over
+  HTTP + WebSocket.
 
 ## 3. Workflow (how a task runs end-to-end)
 
@@ -158,14 +161,12 @@ guard-passed, ledger-stamped results.
 | Adversarial guard demo | `npm run guard` (alias `npm run phase4`) | Phase 2 |
 | Bandit routing demo | `npm run demo5` | Phase 5 |
 | Bandit eval harness | `npm run bandit-eval` | Phase 5; writes `data/bandit-report.json` |
-| Static dashboard | `npm run dashboard` | http://127.0.0.1:4200 |
-| Live trace server | `npm run trace-server` | http://localhost:4300 (+ `/ws`) |
-| UI dev server | `cd ui && npm run dev` | http://localhost:5173 (Phase 3, in progress) |
+| Live trace server | `npm run trace-server` | http://localhost:4300 (+ `/ws`; serves `/api/bandit-report`) |
+| UI dev server | `cd ui && npm run dev` | http://localhost:5173 |
+| UI production build | `cd ui && npm run build` | `tsc` + `vite build` |
 
-First run: `npm install` at the root (and in `ui/`). The `ui/` live-trace UI is
-**not yet runnable** — it is the half-built Phase 3 (React Flow components and
-`useWs` hook exist, but `react`/`react-dom` are not yet in `ui/package.json` and
-`main.ts` is still the default Vite template).
+First run: `npm install` at the root (and in `ui/`). The static `dashboard`
+was retired in Phase 3 in favor of the live trace UI (`ui/` + `trace-server`).
 
 ## 7. Boundaries
 

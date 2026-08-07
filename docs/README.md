@@ -19,7 +19,7 @@ actually execute, updated with every change.
 | 0 — MVP baseline | ✅ done | `npm run preview`, `npm run demo2`, `npm run demo3` |
 | 1 — Schemas & guard | ✅ done | `npm run guard` |
 | 2 — Adversarial providers | ✅ done | `npm run guard` / `npm run phase4` |
-| 3 — Live trace UI | ⏳ next | — |
+| 3 — Live trace UI | ✅ done | `npm run trace-server` + `cd ui && npm run dev` |
 | 5 — Bandit routing + eval harness | ✅ done | `npm run demo5`, `npm run bandit-eval` |
 
 ## How to run
@@ -34,8 +34,12 @@ npm run guard          # Phase 2 — adversarial attack demo (all 3 attacks bloc
 npm run phase4         # alias for npm run guard
 npm run demo5          # Phase 5 — UCB1 bandit wired into the executor (real HTTP, live learning)
 npm run bandit-eval    # Phase 5 — held-out eval: bandit vs baseline, writes data/bandit-report.json
-npm run dashboard      # local dashboard on :4200 (adversarial chips + bandit eval report card)
+
+# Phase 3 — live trace UI (two terminals):
+npm run trace-server   # http://localhost:4300 (+ /ws; serves /api/bandit-report)
+cd ui && npm run dev   # open http://localhost:5173
 ```
 
 The provider mock servers (ports 4101–4103) and adversarial servers
-(ports 4104–4106) start and stop automatically inside each demo script.
+(ports 4104–4106) start and stop automatically inside each demo script and
+inside `trace-server`. The static `dashboard` was retired in Phase 3.

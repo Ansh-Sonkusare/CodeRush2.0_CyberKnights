@@ -11,10 +11,13 @@
  *   POST /api/run      → start a new executor run
  *   POST /api/approve  → approve budget overspend { delta: number }
  *   POST /api/reject   → reject budget overspend
+ *   GET  /api/bandit-report → bandit eval report (data/bandit-report.json)
  *   WS   /ws           → real-time event stream (broadcasts WsEvent frames)
  */
 
 import http from "node:http";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { WebSocketServer, WebSocket } from "ws";
 import { startAllProviders, stopAllProviders, ServerHandle } from "./start-providers.js";
 import { Ledger } from "../src/ledger/ledger.js";
@@ -213,6 +216,16 @@ const server = http.createServer(async (req, res) => {
         body: JSON.stringify({ mode: "none" }),
       });
       send(res, 200, { ok: true });
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/bandit-report") {
+      try {
+        const raw = await readFile(join(process.cwd(), "data", "bandit-report.json"), "utf8");
+        send(res, 200, JSON.parse(raw));
+      } catch {
+        send(res, 200, { error: "bandit report not found — run `npm run bandit-eval` first" });
+      }
       return;
     }
 
