@@ -1,0 +1,22 @@
+{
+  "name": "x402-payment-router",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Multi-Provider Agent Payment Router & Treasury (INF-01) — hackathon MVP",
+  "scripts": {
+    "providers": "tsx scripts/start-providers.ts",
+    "smoke": "tsx scripts/phase1-smoke.ts",
+    "preview": "tsx scripts/preview.ts",
+    "dashboard": "tsx scripts/dashboard.ts",
+    "demo2": "tsx scripts/phase2-demo.ts",
+    "demo3": "tsx scripts/phase3-demo.ts",
+    "typecheck": "tsc --noEmit",
+    "start": "tsx scripts/phase1-smoke.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}
