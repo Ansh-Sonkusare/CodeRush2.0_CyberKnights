@@ -1,215 +1,270 @@
-# AGENTS.md — x402 Payment Router (INF-01)
+# AGENTS.md — x402 Sentinel
 
-> Written for AI agents working in this repo. Human readability is a side effect.
-> If you implement something new or change existing behavior, **update the docs in
-> the same change** (see "Development Workflow" below) and keep the code organized
-> (see "Code Organization"). Keep this file accurate — it is the agent's first read.
+This file is the contract for any AI coding agent (Claude Code, Cursor, Copilot, etc.)
+working in this repo. It exists so that four people plus several LLM sessions don't
+converge on four different type systems and three different ideas of what "settled"
+means. Read this fully before generating code. If a request conflicts with this file,
+this file wins — flag the conflict instead of silently picking one.
 
----
-
-## 1. The Idea
-
-This project is a **policy-driven agent payment router & treasury** (spec INF-01).
-An agent wants to complete a multi-step task ("research x402 specs, translate the
-top result, rank the sources, verify the answer"). Every step costs money and is
-bought from a paid API ("provider"). This project is the **payment control plane**
-that sits between the agent and those providers:
-
-- it **decomposes** a goal into a dependency-aware task graph,
-- **routes** each step to a provider chosen by price / latency / quality,
-- **authorizes** and **pays** each call under strict treasury policy,
-- **guards** every provider response structurally before it touches state,
-- **fails over** safely (idempotency keys, fallbacks, re-planning),
-- **reconciles** every quote, payment, settlement, and result to an append-only
-  ledger that can be exported and replayed.
-
-The differentiator is the **policy guard**: every provider response is parsed
-through a strict Zod schema *before* it can touch budget or wallet state. A
-response containing `budget_cap`, `grant_access`, or an injected instruction is a
-structural rejection, never a downstream `if`. That is what makes an **open,
-permissionless marketplace** safe to route real budget through — the central demo
-claim. The full design is in `PRD.md` (Sentinel framing) and `PRD-ORCH.md`
-(orchestrator framing); working plan lives in `docs/`.
-
-**Safety boundary (non-negotiable):** simulated/testnet funds only, never real
-money. No raw key or seed ever enters agent context — only scoped
-"pay ≤ X to Y for R" tokens. The planner can propose task graphs, never budgets or
-wallet scopes.
-
-## 2. Architecture
-
-The security model is **separation of powers**: every role is a separate module
-boundary, and no role can overstep into another's authority.
-
-| Role | Owns | Can never do |
-|---|---|---|
-| planner | decomposes a task into a call graph | set budgets, expand scopes, sign |
-| route optimizer | picks a provider + records the "why" | raise the reserved cap |
-| treasury | budgets, reserves, allowlists, approval | spend without an authorized token |
-| wallet adapter | scoped signing, idempotency | act outside the scope token |
-| guard | structural validation of provider responses | be bypassed by any downstream `if` |
-| ledger | ground truth of every transaction | be mutated by providers or the router |
-
-Every capability is bought as one **agentic x402 transaction** — the contract every
-component implements:
-
-```
-ASK        ask provider → 402 + terms (price, scheme, resource)
-AUTHORIZE  treasury checks budget → reserves spend → mints scoped single-use token
-PAY        scoped wallet settles with idempotency key (never pays twice)
-VERIFY     settlement confirmed; response parsed through the guard (strict schema)
-RECONCILE  ledger row closed: quote → auth → payment → settlement → response → receipt → outcome
-```
-
-### Module map (pointers, not duplicates)
-
-- `src/types.ts` — shared domain types (capability, ledger, guard violation, etc.)
-- `src/engine/executor.ts` — the orchestration loop: ready-steps waves, routing,
-  pause-for-approval, fallback retry. Emits typed events via
-  `src/engine/executorEvents.ts`.
-- `src/engine/paidCall.ts` — one full paid x402 call; wires ledger + wallet +
-  provider + guard in the exact transaction order. **The guard sits here.**
-- `src/engine/routeOptimizer.ts` — baseline weighted scoring (price/latency/quality)
-  with human-readable reasons; `src/engine/banditOptimizer.ts` — UCB1 bandit,
-  wired into the executor via the `useBandit` option (learns from realized
-  latency/price on every success and failure).
-- `src/guard/responseSchema.ts` + `src/guard/guard.ts` — strict Zod contract and the
-  `.safeParse()` gate that classifies and logs `blocked_policy_violation`.
-- `src/treasury/treasury.ts` — reserve → settle on success → release on failure;
-  `approveOverspend()` raises the cap only via explicit human approval.
-- `src/wallet/wallet.ts` — simulated scoped, idempotent wallet (Phase 9 replaces
-  this with real `@x402/*` + viem).
-- `src/ledger/` — append-only JSON ledger with per-stage rows + violation tracking.
-- `src/providers/mockProvider.ts` / `adversarialProvider.ts` — local HTTP servers
-  that do a real 402 handshake then serve results (the adversarial ones inject
-  attack payloads).
-- `src/config/providers.ts` + `src/config/taskGraph.ts` — provider catalog and the
-  default 5-step task graph.
-- `src/planner/` — Phase 4 ✅ LLM task-graph planner: `plannerSchema.ts` (strict
-  Zod contract + hand-authored JSON schema for structured output + `validateGraph`
-  / `plannerGraphToTaskGraph`) and `planner.ts` (`OllamaPlanner`,
-  `GeminiPlanner`, `OpenAICompatiblePlanner`, `createPlanner`,
-  `planWithFallback` → hardcoded `TASK_GRAPH` on schema failure/timeout/outage).
-  Backend is selected by `LLM_PROVIDER` (gemini | openai-compatible | ollama)
-  with unified `LLM_BASE_URL`/`LLM_API_KEY`/`LLM_MODEL`/`LLM_TEMPERATURE`/
-  `LLM_MAX_TOKENS` env, falling back to the legacy `GEMINI_API_KEY`,
-  `GROQ_API_KEY`/`OPENAI_API_KEY`, `OLLAMA_BASE_URL`/`OLLAMA_MODEL` when
-  `LLM_PROVIDER` is unset (inferred: gemini key → gemini; groq/openai key →
-  openai-compatible; else ollama). Model output is structurally forbidden from
-  carrying budget/scope fields; `plannerGraphToTaskGraph()` stamps the
-  treasury-owned `budget_cap`.
-- `scripts/` — runnable demos (`preview`, `demo2`, `demo3`, `guard`, `demo5`),
-  the eval harness (`bandit-eval`), the live-trace server (`trace-server`).
-- `ui/` — React + React Flow live-trace UI (Phase 3 ✅): task graph with live
-  node states, blocked nodes flash red with the guard reason, interactive
-  approve/deny, and a bandit eval report panel. Talks to `trace-server` over
-  HTTP + WebSocket.
-
-## 3. Workflow (how a task runs end-to-end)
-
-1. **Plan** — the LLM planner (`src/planner/`) decomposes the goal into a
-   Zod-constrained task graph. The backend is `LLM_PROVIDER` (gemini |
-   openai-compatible | ollama), defaulting to any compatible key when unset;
-   Gemini uses `@google/genai`, `openai-compatible` speaks
-   `/chat/completions` (Groq, OpenRouter, OpenAI, …), Ollama uses `/api/chat`.
-   On schema failure, timeout, or backend outage `planWithFallback()` returns
-   the hardcoded `src/config/taskGraph.ts`. The planner proposes structure
-   only — it can never set budgets or scopes (`budget_cap` is stamped by the
-   treasury).
-2. **Route** — for each ready step the executor calls `pickProvider()` (baseline),
-   or — with the `useBandit` option — the UCB1 `BanditOptimizer` (fallbacks stay
-   bandit-aware), recording an explainable "why". Every success/failure feeds the
-   bandit a reward (wall-clock latency + price) so it learns across runs.
-3. **Authorize** — treasury checks the whole parallel wave fits the cap; if not,
-   the executor **pauses** and a human approves/denies (`approve()` / `reject()`).
-4. **Pay** — `runPaidCall()` runs the transaction: `/invoice` → 402 + terms,
-   `wallet.pay()` (idempotent per task+node+provider key, capped by the scope
-   token), `/complete` → result + receipt.
-5. **Guard** — terms, result, and receipt are each parsed structurally; a
-   rejection appends a `blocked_policy_violation`, marks the row
-   `declared_failure`, and the executor falls back to the next-best provider.
-6. **Reconcile** — one ledger row per paid call records every stage; the task
-   summary, trace export, and live UI events all derive from it.
-
-Parallel dependencies fan out in the same wave (`n-extract` + `n-translate` run
-concurrently), and dependent steps only start once their inputs are
-guard-passed, ledger-stamped results.
-
-## 4. Development Workflow — update the docs with every change
-
-- **Every change that implements something new or changes existing behavior must
-  update the docs in the same commit:**
-  - `docs/README.md` — status table + how-to-run
-  - `docs/plan.md` — phase definition-of-done
-  - `docs/todo.md` — living checklist
-  - `docs/context.md` / `docs/guard-contract.md` — if the design or the trust
-    boundary changed
-- **Follow the phase order in `docs/plan.md`** — sequence matters. Do not jump
-  ahead of a phase's prerequisites.
-- **A phase is "done" only when** its demo runs clean and `npm run typecheck`
-  passes — not when the code looks finished.
-- Keep demos runnable at every step: the provider servers auto-start/stop inside
-  each demo script, so a demo is a single `npm run <name>`.
-
-## 5. Code Organization — keep it organized
-
-- **Respect module boundaries.** Never import across the security layers in ways
-  that break separation of powers (e.g. the guard must never read the wallet,
-  providers must never touch the treasury). Each layer owns its imports.
-- **Never bypass the guard** with a downstream `if` after a parse — structural
-  rejection is the only path into the execution context.
-- **Follow existing patterns:** shared types in `src/types.ts`, provider catalog
-  in `src/config/providers.ts`, task graph in `src/config/taskGraph.ts`, demos in
-  `scripts/`, NodeNext style with `.js` import suffixes, strict TS.
-- **Keep `npm run typecheck` clean.** `noUnusedLocals`/`noUnusedParameters` are
-  on — remove dead code rather than silencing it.
-- **No comments unless they earn their place.** The codebase uses small, deliberate
-  doc-comments to explain *why* (e.g. idempotency semantics, guard philosophy).
-  Match that tone; don't narrate the obvious.
-- **Don't add dependencies without asking.** The repo is intentionally minimal
-  (`zod`, `ws`, `tsx`, `@google/genai` today).
-
-## 6. Commands (verified from `package.json`)
-
-| Task | Command | Notes |
-|---|---|---|
-| Typecheck | `npm run typecheck` | must stay clean before done |
-| Happy-path walkthrough | `npm run preview` | Phase 0 legacy |
-| Executor/treasury/approval | `npm run demo2` | Phase 2 legacy |
-| Failure injection / fallback | `npm run demo3` | Phase 3 legacy |
-| Adversarial guard demo | `npm run guard` (alias `npm run phase4`) | Phase 2 |
-| LLM planner demo | `npm run demo4` | Phase 4; reads `LLM_PROVIDER`/`LLM_BASE_URL`/`LLM_API_KEY`/`LLM_MODEL`/`LLM_TEMPERATURE`/`LLM_MAX_TOKENS` (from `.env.local` or shell), with legacy `GEMINI_API_KEY`/`GROQ_API_KEY`/`OLLAMA_BASE_URL`/`OLLAMA_MODEL` fallbacks |
-| Bandit routing demo | `npm run demo5` | Phase 5 |
-| Bandit eval harness | `npm run bandit-eval` | Phase 5; writes `data/bandit-report.json` |
-| Live trace server | `npm run trace-server` | http://localhost:4300 (+ `/ws`; serves `/api/bandit-report`) |
-| UI dev server | `cd ui && npm run dev` | http://localhost:5173 |
-| UI production build | `cd ui && npm run build` | `tsc` + `vite build` |
-
-First run: `npm install` at the root (and in `ui/`), or `pnpm install` — pnpm
-is supported too; its approved build scripts live in `pnpm-workspace.yaml`
-under `allowBuilds` (`esbuild`, `@google/genai`, `protobufjs`), so `pnpm run`
-does not fail its deps-status `pnpm install`. The static `dashboard`
-was retired in Phase 3 in favor of the live trace UI (`ui/` + `trace-server`).
-
-## 7. Boundaries
-
-### Always
-- Update the docs (section 4) and keep typecheck clean with every change.
-- Show command output as evidence before claiming a phase is done.
-- Follow the existing module/pattern conventions (section 5).
-
-### Ask first
-- Adding a dependency.
-- Restructuring a module boundary or the guard contract.
-- Anything touching wallet/treasury security semantics.
-
-### Never
-- Commit secrets, keys, or real-fund addresses.
-- Use anything but simulated/testnet funds.
-- Let a provider response reach state without passing the guard.
-- Mark a phase done without a clean demo + typecheck.
+> **Scope note on the source PRD.** The original INF-01 PRD assumes an EVM stack
+> (Base Sepolia, `@x402/evm`, `viem`, a hand-built adversarial provider catalog, a
+> bandit route optimizer, Bazaar discovery). This build swaps the settlement layer to
+> **Algorand (AVM)** via the GoPlausible `x402-avm` implementation, and narrows the
+> provider catalog to a small, real set anchored by **Zerion** (wallet data) + an
+> **LLM** (summary / credit-score generation), instead of a large mocked catalog.
+> Section 11 maps PRD sections to what's actually in scope. Don't silently
+> re-introduce EVM/viem code from PRD muscle memory — this project is AVM-only.
 
 ---
 
-_Keep this file and the `docs/` in sync with reality. When in doubt about current
-status, read `docs/README.md` and `docs/todo.md` first._
+## 1. What this project is
+
+An agent receives a goal ("assess this Algorand wallet"), a planner decomposes it into
+a small task graph, a router picks which x402-payable provider serves each node,
+a treasury layer reserves and settles payment for each call **before** the response
+is trusted, a policy guard structurally rejects any provider response that tries to
+touch budget/scope/prompt state, and a ledger records every step so it can be
+replayed for a judge.
+
+The concrete demo path:
+
+```
+goal: "assess wallet 0x... / ALGO address ABC..."
+  -> planner produces graph: [fetch-wallet-data] -> [generate-summary] -> [score-credit]
+  -> router selects provider for each node (Zerion for data, LLM provider for the rest)
+  -> treasury reserves budget, x402 client pays the 402 challenge on Algorand
+  -> policy guard validates the response schema before it touches state
+  -> ledger appends one row per paid call
+  -> UI shows the graph live, then supports replay
+```
+
+## 2. Non-negotiable safety boundary
+
+These are correctness requirements, not style preferences. Any generated code that
+violates one of these is a bug, full stop:
+
+1. **Testnet funds only.** Algorand TestNet, faucet-funded accounts. Never wire a
+   MainNet endpoint or a real funded account into any default config.
+2. **No raw secret key in agent/LLM context.** The planner, router, and any LLM call
+   never see a mnemonic, private key, or raw signer. They only ever see a scoped
+   capability ("pay up to X ALGO/ASA to provider Y for node Z") issued by the
+   treasury layer. The signer lives behind one module (`packages/x402-client`) and
+   nothing else imports `algosdk`'s account/signing primitives directly.
+3. **No provider response can rewrite policy.** Every field coming back from a
+   provider — including the payment/settlement response itself — is parsed through
+   a `zod` schema with `.safeParse()` **before** it reaches treasury or ledger state.
+   A schema that doesn't declare a field can't smuggle it in; this is enforced by
+   using `.strict()` schemas, not by an `if` check downstream.
+4. **Treasury owns budget and scope, unconditionally.** The planner can propose a
+   task graph. It cannot propose a budget, a network, or a wallet scope. Those three
+   things are only ever set by `packages/treasury` and are read-only to every other
+   package.
+5. **No double settlement.** Every payment attempt carries an idempotency key
+   (task node id + attempt number). A retried or fallback-triggered payment reuses
+   the same key path so the client wrapper can detect "already paid" before signing
+   again.
+
+If you (the agent) are about to write code that routes around one of these five
+points to "make the demo work faster," stop and say so instead of writing it.
+
+## 3. Tech stack
+
+| Layer | Choice | Notes |
+|---|---|---|
+| Language | TypeScript everywhere | `strict: true`, no `any` without a `// TODO(reason)` comment, no `ts-ignore` |
+| x402 protocol (Algorand/AVM) | `@x402/core`, `@x402/avm`, `@x402/hono` (server), `@x402/fetch` or `@x402/axios` (client) | GoPlausible's Algorand implementation of x402 v2. Facilitator: point at `facilitator.goplausible.xyz` for the hackathon, don't stand up your own unless there's spare time. **Verify current package APIs against the linked docs before writing signer/middleware code — this SDK is actively evolving.** |
+| Algorand SDK | `algosdk` | Only imported inside `packages/x402-client`; everything else calls that package's typed interface |
+| Schema / validation | `zod` | Single source of truth for: planner output shape, provider response shape, ledger row shape, API request/response shape. `.strict()` on every object schema that guards a trust boundary |
+| Wallet-data provider | Zerion API | Wraps the wallet/portfolio/transaction fetch behind an x402-payable resource server. Treat its response shape as untrusted input — validate with zod like any other provider |
+| LLM (summary / credit score) | Provider-agnostic behind one interface (`packages/llm-client`) | Structured output constrained to a zod schema, same pattern as the planner. Don't hardcode a single vendor's SDK outside this package |
+| Planner | LLM-backed, zod-schema-constrained output, hardcoded fallback graph on schema failure or timeout | Never trust planner output for budget/scope (see §2.4) |
+| Orchestration | XState v5 (or a minimal hand-rolled state machine if time-constrained) | Task graph node states map to explicit transitions: `pending -> quoted -> paying -> paid -> validating -> settled \| blocked \| failed` |
+| Ledger | Postgres (or SQLite/libSQL if you want zero-ops for the demo) | Append-only. One row per paid call. Replay = re-query ordered by timestamp, no separate replay data model |
+| Backend framework | **Hono** (matches `@x402/hono` middleware) | Chosen over Express (more per-route boilerplate for zod validation) and Elysia (no official `@x402` middleware — you'd hand-roll the 402-challenge flow). Use `@hono/zod-validator` at every route boundary. One framework for every service in `/apps/api`; don't mix per-service. |
+| Frontend | React + React Flow + WebSocket (`ws` or Socket.io) | Live task graph; reused for replay |
+| Package manager / monorepo | pnpm workspaces | One lockfile, shared `tsconfig.base.json`, shared `zod` schema package |
+
+## 4. Repository layout
+
+Restructure toward this shape. Move code incrementally — don't do one giant
+rename commit; migrate package by package so the repo builds at every step.
+
+```
+/apps
+  /api            — Hono server: planner, router, treasury, guard, ledger endpoints, WS
+  /web            — React + React Flow live trace UI + replay view
+/packages
+  /schemas        — ALL zod schemas live here, and ONLY here. Every other package
+                    imports types from this package; nothing redefines a shape locally.
+  /x402-client    — Wraps @x402/core, @x402/avm, @x402/fetch/axios. Only place
+                    algosdk signing primitives are imported. Exposes a capability-scoped
+                    API: payForResource(capability, providerUrl) -> PaymentResult.
+                    Never exports a raw signer.
+  /treasury       — Budget/risk/allowlist state machine. Issues scoped capabilities.
+                    Reserve -> release-on-failure -> settle-on-success lifecycle.
+  /policy-guard   — Strict zod validation layer for every provider response.
+                    Pure functions: (schema, rawResponse) -> Result<Validated, PolicyViolation>.
+  /providers      — One module per provider: Zerion wallet-data provider, LLM
+                    summary/credit-score provider, plus any mock/adversarial providers
+                    used for demoing the guard. Each implements the same ProviderAdapter
+                    interface from /schemas.
+  /llm-client     — LLM calls behind one interface, structured-output schema-constrained.
+  /planner        — Task-graph generation, hardcoded fallback, dedupe logic.
+  /router         — Provider selection (baseline weighted score; bandit optimizer if time allows).
+  /ledger         — Append-only store + replay query layer. No business logic here.
+/tsconfig.base.json
+/package.json     — workspaces root
+```
+
+**Rule:** if you find yourself importing `algosdk` outside `packages/x402-client`,
+or defining a `zod` schema outside `packages/schemas`, stop — that's the layout
+telling you the code is in the wrong package.
+
+## 5. Type safety rules (non-negotiable for this codebase)
+
+- `strict: true`, `noUncheckedIndexedAccess: true`, `exactOptionalPropertyTypes: true`
+  in `tsconfig.base.json`. Every package extends it, none loosen it.
+- **Every trust boundary is a zod schema, not a TypeScript type assertion.**
+  TypeScript types are erased at runtime; a provider response, an LLM output, and
+  an incoming HTTP request body are all untrusted until `.safeParse()` succeeds.
+  `as Foo` on external input is a bug.
+- **Branded types for anything that looks like a primitive but isn't interchangeable
+  with one:** wallet address, task node id, idempotency key, ALGO/ASA amount (in
+  microAlgo, as a bigint or branded integer — never a floating-point currency
+  value). Example pattern:
+  ```ts
+  type MicroAlgo = number & { readonly __brand: "MicroAlgo" };
+  ```
+  This stops "budget in dollars" and "budget in microAlgo" from being silently
+  swapped at a function boundary — a real failure mode in a payment router.
+- **Discriminated unions for node/task state**, not a `status: string` field with
+  string comparisons scattered around. `type NodeState = { kind: "quoted"; ... } |
+  { kind: "paid"; ... } | { kind: "blocked"; violation: PolicyViolation } | ...`.
+  This makes an invalid state (e.g. "settled but no payment receipt") unrepresentable
+  instead of just "shouldn't happen."
+- **`Result<T, E>` instead of throwing across package boundaries.** Guard
+  validation, payment attempts, and provider calls all return a typed result
+  (`{ ok: true; value: T } | { ok: false; error: E }`) so a caller in another
+  package is forced by the type checker to handle the failure path, not just the
+  happy path. Reserve real `throw` for genuinely unrecoverable programmer errors.
+- **No `any`, no untyped `JSON.parse`.** `JSON.parse(x) as Foo` is banned; pipe it
+  through `FooSchema.safeParse(JSON.parse(x))`.
+- One schema per shape, always imported from `packages/schemas` — never redefine
+  "what a task node looks like" or "what a ledger row looks like" a second time in
+  `apps/api` or `apps/web`. If the UI needs a slightly different shape, derive it
+  with `.pick()`/`.extend()` from the canonical schema, don't hand-write a parallel one.
+
+## 6. Service consistency rules
+
+- **One interface per provider type.** Zerion, the LLM provider, and any
+  mock/adversarial provider used to demo the guard all implement the same
+  `ProviderAdapter` shape from `packages/schemas` (`quote()`, `deliver()`,
+  metadata for price/latency/quality). The router and treasury never special-case
+  "this is Zerion" vs "this is the LLM" — if they need to, the adapter interface is
+  incomplete and should be fixed there, not worked around at the call site.
+- **Every paid call goes through the same path**, regardless of provider:
+  `router.select() -> treasury.reserve() -> x402-client.pay() -> policy-guard.validate()
+  -> treasury.settle() -> ledger.append()`. No provider gets a shortcut around
+  the guard because "it's just Zerion, it's trusted" — the guard's whole point is
+  that trust is established by validated schema, not by provider identity.
+- **Idempotency keys are generated once, at task-node creation, in one place**
+  (`packages/planner` or `packages/router` — pick one and be consistent), not
+  re-derived ad hoc wherever a retry happens.
+- **Money is never a `number` in dollars/ALGO anywhere in business logic.** Convert
+  at the UI boundary only (display formatting), store and compute in microAlgo as
+  a branded bigint/integer.
+- **Environment config (facilitator URL, network, API keys) is loaded and
+  validated once**, via a zod-validated env schema in `packages/schemas` (or a
+  dedicated `packages/config`), not read from `process.env` scattered across files.
+  Fail fast at boot if a required var is missing — not at first use mid-demo.
+- **WebSocket messages to the UI use the same discriminated-union node-state types
+  as the backend state machine** — don't invent a second "UI event" shape that the
+  backend has to translate into. Serialize the real state.
+
+## 7. Policy guard — implementation contract
+
+Because this is the project's actual differentiator, be precise about it:
+
+- Guard schemas are `.strict()` zod objects. A provider response with an extra
+  field the schema doesn't declare fails validation — this is the mechanism that
+  makes "budget mutation attempt" and "scope expansion attempt" structurally
+  impossible to smuggle through, not just something a human reviewer would notice.
+- A guard failure produces a typed `PolicyViolation` (`kind: "budget_mutation" |
+  "scope_expansion" | "prompt_injection" | "receipt_forgery" | "schema_violation"`)
+  and the task node transitions to `blocked`, not `failed` — these are different
+  states in the ledger and the UI (§5's discriminated union).
+- The guard is a pure function of `(schema, rawResponse)`. It never calls
+  treasury, never calls the ledger directly — the orchestrator calls the guard,
+  gets a `Result`, and decides what to do next. Keeping the guard side-effect-free
+  makes it trivially unit-testable with adversarial fixtures.
+- Receipt forgery check (if in scope): cross-verify a claimed settlement against
+  an independent source — either the Algorand indexer directly, or Zerion's own
+  transaction/portfolio endpoint for the treasury account — before marking a
+  ledger row `settled`. Don't trust your own x402 client's self-reported success
+  as the only signal for the stretch version of this check.
+
+## 8. Commands
+
+Adjust once the monorepo is actually wired up; keep this section current as you go.
+
+```bash
+pnpm install                     # from repo root, once
+pnpm -r typecheck                # every package, strict mode, must be clean before merging
+pnpm -r test                     # unit tests — guard fixtures, treasury reserve/release/settle, schema round-trips
+pnpm --filter api dev            # run the API locally against TestNet facilitator
+pnpm --filter web dev            # run the UI
+pnpm -r lint                     # eslint, shared config at root
+```
+
+A PR/commit that doesn't pass `pnpm -r typecheck` is not done, regardless of demo
+time pressure — a type error in the treasury or guard path is exactly the class of
+bug this architecture exists to prevent.
+
+## 9. What agents should NOT do
+
+- Don't import `algosdk` account/signing functions outside `packages/x402-client`.
+- Don't write a new `zod` schema for a shape that already has one in
+  `packages/schemas` — search first.
+- Don't let the planner or router touch a budget number directly — always through
+  `packages/treasury`'s exposed methods.
+- Don't use `number` for on-chain amounts in business logic — microAlgo as a
+  branded integer/bigint only.
+- Don't special-case a specific provider's response inside the router/treasury —
+  fix the shared `ProviderAdapter` interface instead.
+- Don't invent EVM/`viem`/Base-Sepolia code from PRD familiarity — this build is
+  AVM-only; if EVM code shows up in a diff, that's a scope regression.
+- Don't mark a ledger row `settled` from a provider's self-reported status alone
+  if the receipt-forgery check is in scope — cross-verify first.
+- Don't skip `.safeParse()` on any provider or LLM response "just for this one
+  quick test" — that's exactly the shortcut the guard exists to prevent, and it's
+  easy to forget to remove before the demo.
+
+## 10. Definition of done, per task-node feature
+
+Before calling a slice of this done, confirm:
+
+- [ ] Request/response/state shapes added to `packages/schemas`, `.strict()` where they guard a trust boundary
+- [ ] No new `any`, no new bare `as` casts on external input
+- [ ] Money values are branded microAlgo, not raw `number`
+- [ ] Provider implements the shared `ProviderAdapter` interface, no special-casing upstream
+- [ ] Payment path goes through treasury reserve → settle, not a direct pay call
+- [ ] Guard validates the response before treasury/ledger touch it
+- [ ] Ledger row written with idempotency key
+- [ ] `pnpm -r typecheck` and relevant unit tests pass
+- [ ] UI reflects the new state via the same discriminated union, not a parallel shape
+
+## 11. PRD section mapping (what's actually in scope)
+
+| PRD section | Status for this build |
+|---|---|
+| §3.1 Dynamic planner | In scope, as described |
+| §3.2 Provider catalog | Narrowed: Zerion (wallet data) + LLM (summary/credit score) as the real providers; add 1–3 mock/adversarial providers only to demo the guard (§3.5) |
+| §3.3 Adaptive route optimizer | Baseline weighted score is the target; bandit optimizer is stretch, only after §3.1/3.2/3.4/3.5 are solid |
+| §3.4 Treasury/policy layer | In scope, as described — this is core |
+| §3.5 Policy guard | In scope, core differentiator — keep it |
+| §3.6 Fallback/recovery | In scope, scoped to the actual providers in use |
+| §3.7 Reconciliation ledger + replay | In scope |
+| §3.8 Live trace UI | In scope |
+| §3.9 x402 Bazaar / open marketplace | Stretch only — the Algorand facilitator's Bazaar-equivalent discovery support should be verified against current docs before committing to it |
+| §3.10 Zerion cross-check + treasury view | In scope — Zerion is already the primary data provider here, so the "independent settlement verification" idea doubles down on a dependency you already have, not a new one |
+| Tech stack table (EVM/viem/Base Sepolia) | **Superseded** — see §3 of this file for the Algorand equivalents |

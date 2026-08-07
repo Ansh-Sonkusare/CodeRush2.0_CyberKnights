@@ -1,6 +1,11 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
 allowBuilds:
-  '@google/genai': true
+  "@google/genai": true
   esbuild: true
   protobufjs: true
+
 minimumReleaseAgeExclude:
   - ws@8.21.3

@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "composite": false
+  },
+  "include": ["src"],
+  "references": [
+    { "path": "../../packages/schemas" },
+    { "path": "../../packages/config" },
+    { "path": "../../packages/ledger" }
+  ]
+}
