@@ -8,6 +8,7 @@
   "include": ["src"],
   "references": [
     { "path": "../../packages/schemas" },
-    { "path": "../../packages/config" }
+    { "path": "../../packages/config" },
+    { "path": "../../packages/providers" }
   ]
 }

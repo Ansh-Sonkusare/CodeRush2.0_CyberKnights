@@ -1,5 +1,6 @@
 import {
   DeliverResponseSchema,
+  ProviderCatalogEntryWireSchema,
   QuoteResponseSchema,
   RemoteHealthSchema,
   err,
@@ -9,6 +10,7 @@ import {
   type MicroAlgo,
   type ProviderAdapter,
   type ProviderCatalogEntry,
+  type ProviderCatalogEntryWire,
   type ProviderError,
   type QuoteResponse,
   type Result,
@@ -16,9 +18,10 @@ import {
 
 /**
  * Generic HTTP proxy adapter — delegates quote/deliver/health to a running
- * provider server. Attached via POST /providers/register so external servers
- * (mock/adversarial guard-demo providers, self-hosted resource servers) join
- * the catalog with zero code changes.
+ * provider server. Attached via POST /providers/register (service-providers) so
+ * external servers join the catalog with zero code changes, and constructed by
+ * service-orchestrator from the fetched catalog so NodeMachine can pay and
+ * deliver against any registered provider.
  *
  * Wire contract a registered server must speak:
  *   quote    POST {base_url}/quote    body { goal }
@@ -109,4 +112,38 @@ export class RemoteProviderAdapter implements ProviderAdapter {
       };
     }
   }
+}
+
+// ─── Wire conversions ─────────────────────────────────────────────────────────
+// In-process catalog entries keep price_micro_algo as a bigint (MicroAlgo); the
+// HTTP wire shape (ProviderCatalogEntryWire) carries it as a decimal string.
+
+export function toWire(adapter: ProviderAdapter): ProviderCatalogEntryWire {
+  return {
+    provider_id: adapter.providerId,
+    capability: adapter.capability,
+    price_micro_algo: adapter.priceHint.toString(),
+    latency_hint_ms: adapter.latencyHintMs,
+    quality_score: adapter.qualityScore,
+    base_url: adapter.baseUrl,
+    role: adapter.role,
+  };
+}
+
+export function fromWire(wire: ProviderCatalogEntryWire): ProviderCatalogEntry {
+  const checked = ProviderCatalogEntryWireSchema.safeParse(wire);
+  if (!checked.success) {
+    throw new Error(
+      `invalid provider catalog wire entry: ${checked.error.issues.map((i) => i.message).join("; ")}`,
+    );
+  }
+  return {
+    provider_id: checked.data.provider_id,
+    capability: checked.data.capability,
+    price_micro_algo: BigInt(checked.data.price_micro_algo),
+    latency_hint_ms: checked.data.latency_hint_ms,
+    quality_score: checked.data.quality_score,
+    base_url: checked.data.base_url,
+    role: checked.data.role,
+  };
 }

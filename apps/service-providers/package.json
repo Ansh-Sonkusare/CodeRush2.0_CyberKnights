@@ -15,6 +15,7 @@
     "@hono/zod-validator": "^0.9.0",
     "@sentinel/schemas": "workspace:*",
     "@sentinel/config": "workspace:*",
+    "@sentinel/providers": "workspace:*",
     "hono": "^4.11.2",
     "zod": "^4.4.3"
   },

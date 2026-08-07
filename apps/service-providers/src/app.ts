@@ -4,42 +4,17 @@ import { z } from "zod";
 import {
   CapabilitySchema,
   RegisterProviderRequestSchema,
-  type ProviderAdapter,
-  type ProviderCatalogEntry,
-  type ProviderCatalogEntryWire,
   type ProviderEnv,
   type ProviderRegistry,
   type ProviderSchema,
 } from "@sentinel/schemas";
-import { RemoteProviderAdapter } from "./remote.js";
+import { RemoteProviderAdapter, fromWire, toWire } from "@sentinel/providers";
 
 // ─── Wire conversions ─────────────────────────────────────────────────────────
 // In-process entries keep price_micro_algo as a bigint; the HTTP wire shape
 // carries it as a decimal string (see ProviderCatalogEntryWireSchema).
-
-function toWire(adapter: ProviderAdapter): ProviderCatalogEntryWire {
-  return {
-    provider_id: adapter.providerId,
-    capability: adapter.capability,
-    price_micro_algo: adapter.priceHint.toString(),
-    latency_hint_ms: adapter.latencyHintMs,
-    quality_score: adapter.qualityScore,
-    base_url: adapter.baseUrl,
-    role: adapter.role,
-  };
-}
-
-function fromWire(wire: ProviderCatalogEntryWire): ProviderCatalogEntry {
-  return {
-    provider_id: wire.provider_id,
-    capability: wire.capability,
-    price_micro_algo: BigInt(wire.price_micro_algo),
-    latency_hint_ms: wire.latency_hint_ms,
-    quality_score: wire.quality_score,
-    base_url: wire.base_url,
-    role: wire.role,
-  };
-}
+// toWire/fromWire live in @sentinel/providers so the orchestrator can reuse the
+// exact same conversions when building routeable adapters from the catalog.
 
 const paramIdSchema = z.object({ id: z.string().min(1) });
 const paramCapabilitySchema = z.object({ capability: CapabilitySchema });

@@ -13,4 +13,4 @@
 export type { ProviderRoutes, ProviderSchema, ProviderEnv } from "./providers.js";
 export type { PlannerRoutes, PlannerSchema, PlannerEnv } from "./planner.js";
 export type { GatewayRoutes, GatewaySchema, GatewayEnv } from "./gateway.js";
-export type { OrchestratorRoutes } from "./orchestrator.js";
+export type { OrchestratorRoutes, OrchestratorSchema, OrchestratorEnv } from "./orchestrator.js";

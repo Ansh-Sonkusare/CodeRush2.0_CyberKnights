@@ -210,7 +210,8 @@ Adjust once the monorepo is actually wired up; keep this section current as you 
 ```bash
 pnpm install                     # from repo root, once
 pnpm -r typecheck                # every package, strict mode, must be clean before merging
-pnpm -r test                     # unit tests — guard fixtures, treasury reserve/release/settle, schema round-trips
+pnpm test                        # vitest run — tests/ covering schema round-trips, guard
+                                 # fixtures, treasury lifecycle, and end-to-end flow
 pnpm --filter api dev            # run the API locally against TestNet facilitator
 pnpm --filter web dev            # run the UI
 pnpm -r lint                     # eslint, shared config at root

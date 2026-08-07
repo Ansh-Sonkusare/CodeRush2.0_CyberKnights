@@ -13,6 +13,8 @@
     { "path": "../../packages/treasury" },
     { "path": "../../packages/x402-client" },
     { "path": "../../packages/policy-guard" },
-    { "path": "../../packages/router" }
+    { "path": "../../packages/router" },
+    { "path": "../../packages/ledger" },
+    { "path": "../../packages/providers" }
   ]
 }

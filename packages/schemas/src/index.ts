@@ -23,6 +23,7 @@ export * from "./provider.js";
 export * from "./llm.js";
 export * from "./ledger.js";
 export * from "./planner.js";
+export * from "./orchestrator.js";
 export * from "./guard.js";
 export * from "./node-state.js";
 export * from "./ws.js";
