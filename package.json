@@ -1,33 +1,27 @@
 {
-  "name": "x402-payment-router",
+  "name": "x402-sentinel",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Multi-Provider Agent Payment Router & Treasury (INF-01) — hackathon MVP",
+  "description": "x402 Sentinel — Algorand agent payment router with policy guard",
   "scripts": {
-    "providers": "tsx scripts/start-providers.ts",
-    "smoke": "tsx scripts/phase1-smoke.ts",
-    "preview": "tsx scripts/preview.ts",
-    "trace-server": "tsx scripts/trace-server.ts",
-    "demo2": "tsx scripts/phase2-demo.ts",
-    "demo3": "tsx scripts/phase3-demo.ts",
-    "demo4": "tsx scripts/phase4-planner-demo.ts",
-    "phase4": "tsx scripts/phase4-guard-demo.ts",
-    "guard": "tsx scripts/phase4-guard-demo.ts",
-    "demo5": "tsx scripts/phase5-demo.ts",
-    "bandit-eval": "tsx scripts/bandit-eval.ts",
-    "typecheck": "tsc --noEmit",
-    "start": "tsx scripts/phase1-smoke.ts"
+    "dev": "concurrently -n providers,planner,orchestrator,gateway,web -c cyan,magenta,yellow,green,white \"pnpm --filter service-providers dev\" \"pnpm --filter service-planner dev\" \"pnpm --filter service-orchestrator dev\" \"pnpm --filter gateway dev\" \"pnpm --filter web dev\"",
+    "build": "pnpm -r --filter=./packages/* build && pnpm -r --filter=./apps/* build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "lint": "pnpm -r lint",
+    "clean": "pnpm -r clean && rm -rf node_modules",
+    "legacy:providers": "tsx scripts/start-providers.ts",
+    "legacy:trace-server": "tsx scripts/trace-server.ts"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "concurrently": "^9.0.0",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0"
   },
   "dependencies": {
-    "@google/genai": "^2.16.0",
-    "@types/ws": "^8.18.1",
-    "ws": "^8.21.3",
+    "@sentinel/config": "workspace:*",
     "zod": "^4.4.3"
   }
 }

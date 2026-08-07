@@ -1,4 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
+import { loadConfig, type AppConfig } from "@sentinel/config";
 import { TASK_GRAPH } from "../config/taskGraph.js";
 import { TaskGraph } from "../types.js";
 import {
@@ -47,24 +48,11 @@ export interface PlannerEnv {
 
 const stripTrailingSlash = (url: string): string => url.replace(/\/+$/, "");
 
-function resolveTemperature(raw: string | undefined): number {
-  const n = Number(raw);
-  return Number.isFinite(n) ? n : DEFAULT_TEMPERATURE;
-}
-
-function resolveMaxTokens(raw: string | undefined): number | undefined {
-  const n = Number(raw);
-  return Number.isFinite(n) && n > 0 ? Math.floor(n) : undefined;
-}
-
-export function loadPlannerEnv(): PlannerEnv {
-  const geminiKey = process.env.GEMINI_API_KEY || process.env.LLM_API_KEY || undefined;
-  const openaiKey =
-    process.env.LLM_API_KEY ||
-    process.env.GROQ_API_KEY ||
-    process.env.OPENAI_API_KEY ||
-    undefined;
-  const requested = process.env.LLM_PROVIDER;
+export function loadPlannerEnv(config: AppConfig = loadConfig()): PlannerEnv {
+  const llm = config.llm;
+  const geminiKey = llm.geminiApiKey || llm.apiKey;
+  const openaiKey = llm.apiKey || llm.groqApiKey || llm.openaiApiKey;
+  const requested = llm.provider;
 
   let backend: PlannerBackend;
   if (requested === "gemini" || requested === "openai-compatible" || requested === "ollama") {
@@ -83,29 +71,29 @@ export function loadPlannerEnv(): PlannerEnv {
         backend,
         baseUrl: undefined,
         apiKey: geminiKey,
-        model: process.env.LLM_MODEL ?? process.env.GEMINI_MODEL ?? DEFAULT_GEMINI_MODEL,
-        temperature: resolveTemperature(process.env.LLM_TEMPERATURE),
-        maxTokens: resolveMaxTokens(process.env.LLM_MAX_TOKENS),
+        model: llm.model ?? llm.geminiModel ?? DEFAULT_GEMINI_MODEL,
+        temperature: llm.temperature ?? DEFAULT_TEMPERATURE,
+        maxTokens: llm.maxTokens,
       };
     case "openai-compatible":
       return {
         backend,
-        baseUrl: stripTrailingSlash(process.env.LLM_BASE_URL ?? DEFAULT_OPENAI_BASE_URL),
+        baseUrl: stripTrailingSlash(llm.baseUrl ?? DEFAULT_OPENAI_BASE_URL),
         apiKey: openaiKey,
-        model: process.env.LLM_MODEL ?? process.env.OPENAI_MODEL ?? DEFAULT_OPENAI_MODEL,
-        temperature: resolveTemperature(process.env.LLM_TEMPERATURE),
-        maxTokens: resolveMaxTokens(process.env.LLM_MAX_TOKENS),
+        model: llm.model ?? llm.openaiModel ?? DEFAULT_OPENAI_MODEL,
+        temperature: llm.temperature ?? DEFAULT_TEMPERATURE,
+        maxTokens: llm.maxTokens,
       };
     case "ollama":
       return {
         backend,
         baseUrl: stripTrailingSlash(
-          process.env.LLM_BASE_URL ?? process.env.OLLAMA_BASE_URL ?? DEFAULT_OLLAMA_BASE_URL,
+          llm.baseUrl ?? llm.ollamaBaseUrl ?? DEFAULT_OLLAMA_BASE_URL,
         ),
         apiKey: undefined,
-        model: process.env.LLM_MODEL ?? process.env.OLLAMA_MODEL ?? DEFAULT_OLLAMA_MODEL,
-        temperature: resolveTemperature(process.env.LLM_TEMPERATURE),
-        maxTokens: resolveMaxTokens(process.env.LLM_MAX_TOKENS),
+        model: llm.model ?? llm.ollamaModel ?? DEFAULT_OLLAMA_MODEL,
+        temperature: llm.temperature ?? DEFAULT_TEMPERATURE,
+        maxTokens: llm.maxTokens,
       };
   }
 }
