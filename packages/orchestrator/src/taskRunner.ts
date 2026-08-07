@@ -43,8 +43,13 @@ export interface TaskRunnerOptions {
   /** Shared engines (no treasury — a fresh one is created per run). */
   x402: X402Client;
   ledger: LedgerStore;
-  router: Router;
-  adapters: ProviderAdapter[];
+  /**
+   * Router + catalog adapters are resolved at run() time (thunks) so a
+   * refreshed provider catalog — fail/recover demo knobs included — is
+   * honoured on every run, not just whatever was loaded at boot.
+   */
+  router: () => Router;
+  adapters: () => ProviderAdapter[];
   plan: (goal: string, taskId: string) => Promise<PlanOutcome>;
   broadcast: (msg: WsMessage) => void;
 }
@@ -101,6 +106,7 @@ export function createTaskRunner(options: TaskRunnerOptions): TaskRunner {
               taskId: handle.taskId,
               nodeId: node.id,
               state: signal.state,
+              budget: handle.deps.treasury.status(),
               at: new Date().toISOString(),
             });
           } else {
@@ -136,12 +142,15 @@ export function createTaskRunner(options: TaskRunnerOptions): TaskRunner {
       const cap = request.cap === undefined ? DEFAULT_RUN_CAP : microAlgo(BigInt(request.cap));
       const treasury = new Treasury(runTaskId, cap);
 
+      const router = options.router();
+      const adapters = options.adapters();
+
       const deps = {
         treasury,
         x402: options.x402,
         ledger: options.ledger,
-        router: options.router,
-        adapters: options.adapters,
+        router,
+        adapters,
       };
 
       const handle: RunHandle = {
@@ -200,6 +209,8 @@ export function createTaskRunner(options: TaskRunnerOptions): TaskRunner {
         budget: ctx.budget,
         startedAt: ctx.startedAt,
       };
+      if (ctx.graph !== undefined) status.graph = ctx.graph;
+      if (ctx.planSource !== undefined) status.planSource = ctx.planSource;
       if (ctx.pauseInfo !== undefined) status.pauseInfo = ctx.pauseInfo;
       if (ctx.finishedAt !== undefined) status.finishedAt = ctx.finishedAt;
       return status;

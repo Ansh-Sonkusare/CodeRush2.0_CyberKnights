@@ -10,8 +10,7 @@
     "typecheck": "pnpm -r typecheck",
     "test": "vitest run",
     "lint": "pnpm -r lint",
-    "clean": "pnpm -r clean && rm -rf node_modules",
-    "legacy:providers": "tsx scripts/start-providers.ts"
+    "clean": "pnpm -r clean && rm -rf node_modules"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

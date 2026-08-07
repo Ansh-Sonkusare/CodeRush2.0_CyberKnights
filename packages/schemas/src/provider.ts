@@ -34,6 +34,9 @@ export const ProviderCatalogEntryWireSchema = z
     quality_score: z.number().min(0).max(1),
     base_url: z.string().url(),
     role: z.enum(["primary", "backup"]).optional(),
+    // Registry-local demo knob: whether this provider is currently marked
+    // failed (excluded from routing). Absent on entries that can't report it.
+    failed: z.boolean().optional(),
   })
   .strict();
 

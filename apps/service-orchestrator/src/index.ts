@@ -5,7 +5,7 @@ import { dirname, resolve } from "node:path";
 import { loadConfig } from "@sentinel/config";
 import { createLedgerStore } from "@sentinel/ledger";
 import { SimulatedX402Client } from "@sentinel/x402-client";
-import { createRouter } from "@sentinel/router";
+import { createRouter, type Router } from "@sentinel/router";
 import { RemoteProviderAdapter, fromWire } from "@sentinel/providers";
 import {
   PlanOutcomeSchema,
@@ -40,34 +40,56 @@ async function main(): Promise<void> {
     return parsed.data;
   };
 
-  // Build routeable adapters from the provider registry (service-providers).
+  // Routeable catalog, rebuilt from the provider registry on every run.
   // A provider catalog entry is untrusted wire input — fromWire validates it.
-  let adapters: ProviderAdapter[] = [];
-  try {
-    const res = await providers.providers.$get();
-    if (res.ok) {
+  // Entries marked `failed` (the registry's demo fail/recover knob) are
+  // excluded from routing so the router/fallback path can be demoed live.
+  let currentAdapters: ProviderAdapter[] = [];
+  let currentRouter: Router = createRouter([]);
+
+  async function refreshProviders(): Promise<void> {
+    try {
+      const res = await providers.providers.$get();
+      if (!res.ok) {
+        console.warn(`[orchestrator] provider registry returned HTTP ${res.status}`);
+        return;
+      }
+      const next: ProviderAdapter[] = [];
       for (const entry of await res.json()) {
+        if (entry.failed === true) continue;
         try {
-          adapters.push(new RemoteProviderAdapter(fromWire(entry)));
+          next.push(new RemoteProviderAdapter(fromWire(entry)));
         } catch {
           // skip invalid catalog entries — the registry is external input
         }
       }
+      currentAdapters = next;
+      currentRouter = createRouter(next);
+    } catch (err) {
+      // Registry unreachable mid-run — keep the previous catalog rather than
+      // wiping it; runs will fail to route only if nothing is ever loaded.
+      console.warn(
+        `[orchestrator] provider registry unreachable at :${config.ports.providers}: ` +
+          `${err instanceof Error ? err.message : String(err)}`,
+      );
     }
-  } catch (err) {
-    console.warn(
-      `[orchestrator] provider registry unreachable at :${config.ports.providers}: ` +
-        `${err instanceof Error ? err.message : String(err)}`,
-    );
   }
-  if (adapters.length === 0) {
+
+  await refreshProviders();
+  if (currentAdapters.length === 0) {
     console.warn("[orchestrator] no providers loaded — runs will fail to route");
   }
 
   const x402 = new SimulatedX402Client();
-  const router = createRouter(adapters);
 
-  const { app } = createOrchestratorApp({ plan, ledger, x402, router, adapters });
+  const { app } = createOrchestratorApp({
+    plan,
+    ledger,
+    x402,
+    refreshProviders,
+    router: () => currentRouter,
+    adapters: () => currentAdapters,
+  });
 
   serve({ fetch: app.fetch, port: config.ports.orchestrator }, (info) => {
     console.log(`[orchestrator] listening on :${info.port}`);

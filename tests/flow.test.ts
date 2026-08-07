@@ -136,11 +136,12 @@ function makeFixture(adapters: ProviderAdapter[], capMicroAlgo: bigint): FlowFix
   const tmpDir = mkdtempSync(join(tmpdir(), "sentinel-flow-"));
   const ledger = createLedgerStore(join(tmpDir, "ledger.db"));
   const messages: WsMessage[] = [];
+  const router = createRouter(adapters);
   const runner = createTaskRunner({
     x402: new SimulatedX402Client(),
     ledger,
-    router: createRouter(adapters),
-    adapters,
+    router: () => router,
+    adapters: () => adapters,
     plan: async (goal, taskIdValue) => planGraph(taskIdValue),
     broadcast: (msg) => messages.push(msg),
   });

@@ -80,16 +80,16 @@ the real provider content. Status map:
 | Zerion wallet-data adapter | 🚧 placeholder — `quote()/deliver()` return "not wired" | `apps/service-providers/src/providers/zerion.ts` |
 | LLM summary / credit-score adapters | 🚧 placeholder — `quote()/deliver()` return "not wired" | `apps/service-providers/src/providers/llm.ts` |
 | Real x402 payment on Algorand (facilitator, AVM signer) | 🚧 not wired — `SimulatedX402Client` used | `packages/x402-client/src/index.ts` |
-| Mock / adversarial provider **servers** | 🚧 legacy `scripts/` + `src/providers/*`, not on the current service-providers boot path | `scripts/`, `src/` |
-| **`apps/web` UI** | 🚧 **stub** — `main.tsx` is `export {}` | `apps/web/src/main.tsx` |
-| Legacy React Flow UI | built but in `ui/` (pre-migration, wired to legacy executor not the gateway) | `ui/src/` |
+| Mock / adversarial provider **servers** | ✅ in-process mocks on the service-providers boot path (`/mock/:id/*` HTTP surface), normal + adversarial modes | `apps/service-providers/src/providers/mock.ts` |
+| **`apps/web` UI** | ✅ built — React Flow live trace wired to the gateway `/ws` + `/api` | `apps/web/src/` |
+| Legacy React Flow UI | ❌ removed — superseded by `apps/web` | — |
 
-> The engine (everything except the UI and the provider *content* servers) is
-> real and test-covered. The demo provider content is not: Zerion and the LLM
-> providers are registered as placeholders, so a full `run` against the live
-> services would fail at `quote()`. The end-to-end **flow test**
-> (`tests/flow.test.ts`) proves the engine by injecting mock providers that
-> *do* quote/deliver in-process.
+> The engine **and** the demo provider content are now real and test-covered.
+> In-process mock adapters (well-behaved + adversarial) are registered on the
+> service-providers boot path and served over HTTP (`/mock/:id/quote`,
+> `/mock/:id/deliver`, `/mock/:id/health`), so a full `run` against the live
+> services settles all three nodes and the policy guard blocks the adversarial
+> ones. Zerion/LLM adapters remain placeholders until real API wiring (§10.1).
 
 ---
 
@@ -377,19 +377,19 @@ Everything the UI needs already exists in the gateway surface (§5.4) except:
 8. **Replay view.** `GET /api/ledger/task/:taskId/export` rendered as a
    timeline/table (stages per row, violations, outcome); a task picker lists
    recent rows from `GET /api/ledger/rows`.
-9. **Retire legacy.** Delete `ui/`, `src/`, `scripts/*` demo providers once
-   `apps/web` covers them; keep only what the current boot path uses.
+9. **Retire legacy.** `ui/`, `src/`, and the legacy `scripts/*` demo providers
+   are removed — `apps/web` and the in-process mock providers cover them.
 
 ### 9.4 Definition of done for the UI phase
 
-- [ ] Graph renders the real planned graph from `ExecutionStatus` (not a hardcoded skeleton)
-- [ ] Live node states come from `/ws` frames parsed with `WsMessageSchema`
-- [ ] Budget pause shows interactive approve/deny wired to the orchestrator API
-- [ ] Blocked attacks render with violation type + rejected fields
-- [ ] Ledger replay view renders a finished task's export
-- [ ] Money displayed in microAlgo from wire strings — no `number` for amounts
-- [ ] `pnpm -r typecheck` clean; `pnpm --filter web build` clean
-- [ ] `ui/`, `src/`, legacy `scripts/` removed once superseded
+- [x] Graph renders the real planned graph from `ExecutionStatus` (not a hardcoded skeleton)
+- [x] Live node states come from `/ws` frames parsed with `WsMessageSchema`
+- [x] Budget pause shows interactive approve/deny wired to the orchestrator API
+- [x] Blocked attacks render with violation type + rejected fields
+- [x] Ledger replay view renders a finished task's export
+- [x] Money displayed in microAlgo from wire strings — no `number` for amounts
+- [x] `pnpm -r typecheck` clean; `pnpm --filter web build` clean
+- [x] `ui/`, `src/`, legacy `scripts/` removed once superseded
 
 ---
 

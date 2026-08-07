@@ -235,6 +235,7 @@ const spawnReadyNodes = machine.assign(({ context }) => {
       taskId: context.taskId,
       nodeId: node.id,
       state: nodes[node.id] as NodeState,
+      budget: context.deps.treasury.status(),
       at: new Date().toISOString(),
     });
   }
@@ -379,6 +380,8 @@ export const taskMachine = machine.createMachine({
                 event: "task_started",
                 taskId: context.taskId,
                 goal: context.goal,
+                graph,
+                planSource: context.planSource ?? "planner",
                 at: new Date().toISOString(),
               });
             },
