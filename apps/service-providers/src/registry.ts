@@ -1,50 +1,29 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
 import type { ProviderAdapter, ProviderRegistry } from "@sentinel/schemas";
 
 /**
- * In-memory ProviderRegistry for apps/service-providers (Phase 7).
+ * In-memory ProviderRegistry for apps/service-providers.
  *
- * No provider catalog is hardcoded — adapters are registered at boot (the
- * Zerion / AI placeholder adapters) or at runtime via POST /providers/register.
- * A "failed" provider is a demo knob: it stays in the registry but is hidden
- * from the routeable catalog so the router/fallback path can be demoed.
+ * Adapters are registered at boot (Zerion, LLM, mock set) or at runtime via
+ * POST /providers/register. The registry is the catalog — it never filters
+ * providers from routing based on a "failed" flag. Failure is a property of
+ * the provider itself:
+ *
+ *   - MockProviders: `adapter.setFailed()` makes quote()/deliver() return err,
+ *     which the HTTP mock routes surface as HTTP 503. The orchestrator's node
+ *     machine sees the 503, treats it as a retriable failure, and tries the
+ *     next candidate. No routing exclusion needed.
+ *
+ *   - RemoteProviderAdapters (real external providers): the registry's
+ *     markFailed/recover/isFailed knob still exists as a manual operator
+ *     override for genuinely dead remotes that you can't reach to toggle
+ *     directly. This is surfaced in the UI's `failed` field.
+ *
  * The interface itself lives in packages/schemas (shared contract).
- *
- * The `failed` set is persisted to `statePath` (default .data/failed.json) so
- * that fail/recover knob state survives `tsx watch` hot-reloads. Without this,
- * every file save that triggers a process restart wipes the failed set and the
- * next run ignores your fail clicks.
  */
-export function createInMemoryRegistry(
-  statePath = ".data/failed.json",
-): ProviderRegistry {
+export function createInMemoryRegistry(): ProviderRegistry {
   const adapters = new Map<string, ProviderAdapter>();
-
-  // ─── Persist helpers ────────────────────────────────────────────────────────
-
-  function loadFailed(): Set<string> {
-    try {
-      if (!existsSync(statePath)) return new Set();
-      const raw = readFileSync(statePath, "utf8");
-      const parsed: unknown = JSON.parse(raw);
-      if (!Array.isArray(parsed)) return new Set();
-      return new Set(parsed.filter((x): x is string => typeof x === "string"));
-    } catch {
-      return new Set();
-    }
-  }
-
-  function saveFailed(set: Set<string>): void {
-    try {
-      mkdirSync(dirname(statePath), { recursive: true });
-      writeFileSync(statePath, JSON.stringify([...set]), "utf8");
-    } catch {
-      // Non-fatal — worst case the knob resets on the next restart.
-    }
-  }
-
-  const failed = loadFailed();
+  // Manual failed set for non-mock (remote) providers only.
+  const failed = new Set<string>();
 
   return {
     register(adapter) {
@@ -63,22 +42,23 @@ export function createInMemoryRegistry(
     },
 
     findByCapability(capability) {
+      // Does not filter out failed providers — callers (the /catalog endpoint)
+      // receive the full set. The orchestrator uses GET /providers directly and
+      // builds its own adapter list; it does not call this endpoint.
       return [...adapters.values()].filter(
-        (adapter) => adapter.capability === capability && !failed.has(adapter.providerId),
+        (adapter) => adapter.capability === capability,
       );
     },
 
     markFailed(providerId) {
       if (!adapters.has(providerId)) return false;
       failed.add(providerId);
-      saveFailed(failed);
       return true;
     },
 
     recover(providerId) {
       if (!adapters.has(providerId)) return false;
       failed.delete(providerId);
-      saveFailed(failed);
       return true;
     },
 

@@ -9,6 +9,7 @@ import {
   type ProviderSchema,
 } from "@sentinel/schemas";
 import { RemoteProviderAdapter, fromWire, toWire } from "@sentinel/providers";
+import { MockProvider } from "./providers/mock.js";
 
 // ─── Wire conversions ─────────────────────────────────────────────────────────
 // In-process entries keep price_micro_algo as a bigint; the HTTP wire shape
@@ -19,6 +20,18 @@ import { RemoteProviderAdapter, fromWire, toWire } from "@sentinel/providers";
 const paramIdSchema = z.object({ id: z.string().min(1) });
 const paramCapabilitySchema = z.object({ capability: CapabilitySchema });
 
+/**
+ * Return true if the adapter should be shown as "failed" in the UI.
+ * For in-process MockProviders, read the flag on the adapter itself — the
+ * adapter is the source of truth for service-level failure.
+ * For RemoteProviderAdapters (external providers), fall back to the registry's
+ * explicit failed set (which is how a human operator marks a known-dead remote).
+ */
+function isFailed(adapter: unknown, registry: ProviderRegistry, providerId: string): boolean {
+  if (adapter instanceof MockProvider) return adapter.isFailed;
+  return registry.isFailed(providerId);
+}
+
 export function createProvidersApp(registry: ProviderRegistry) {
   const app = new Hono<ProviderEnv, ProviderSchema>();
   app.use("*", (c, next) => {
@@ -26,15 +39,15 @@ export function createProvidersApp(registry: ProviderRegistry) {
     return next();
   });
 
-  // Full registry view (includes failed providers — ops/demo visibility).
-  // `failed` is a registry-local knob (excluded from routing) — the shared
-  // toWire can't report it, so it's attached here.
+  // Full registry view (includes all providers — ops/demo visibility).
+  // `failed` reflects the adapter's own outage state for mocks, or the
+  // registry knob for remote providers.
   app.get("/providers", (c) =>
     c.json(
       c
         .get("registry")
         .list()
-        .map((a) => ({ ...toWire(a), failed: c.get("registry").isFailed(a.providerId) })),
+        .map((a) => ({ ...toWire(a), failed: isFailed(a, c.get("registry"), a.providerId) })),
     ),
   );
 
@@ -53,7 +66,8 @@ export function createProvidersApp(registry: ProviderRegistry) {
     },
   );
 
-  // Routeable catalog for one capability — excludes failed providers.
+  // Routeable catalog for one capability — for mocks, include even failed ones
+  // (they will fail at the HTTP layer and the orchestrator will retry/fallback).
   app.get(
     "/providers/catalog/:capability",
     zValidator("param", paramCapabilitySchema),
@@ -63,7 +77,7 @@ export function createProvidersApp(registry: ProviderRegistry) {
         c
           .get("registry")
           .findByCapability(capability)
-          .map((a) => ({ ...toWire(a), failed: false })),
+          .map((a) => ({ ...toWire(a), failed: isFailed(a, c.get("registry"), a.providerId) })),
       );
     },
   );
@@ -81,13 +95,30 @@ export function createProvidersApp(registry: ProviderRegistry) {
     },
   );
 
+  // ─── Fail / recover knobs ─────────────────────────────────────────────────
+  // For MockProviders: sets the _failed flag on the adapter directly — the
+  // next quote()/deliver() call returns a service-level error, exactly as a
+  // real external provider would behave when it returns HTTP 503. The
+  // orchestrator still routes to it; the node machine's retry/fallback path
+  // handles the failure.
+  //
+  // For RemoteProviderAdapters: falls back to the registry's markFailed/recover
+  // (routing exclusion), which is the right model for a genuinely dead remote —
+  // you'd have no other way to signal the failure from this service.
+
   app.post(
     "/providers/:id/fail",
     zValidator("param", paramIdSchema),
     (c) => {
       const reg = c.get("registry");
       const { id } = c.req.valid("param");
-      if (!reg.markFailed(id)) return c.json({ message: `unknown provider "${id}"` }, 404);
+      const adapter = reg.get(id);
+      if (!adapter) return c.json({ message: `unknown provider "${id}"` }, 404);
+      if (adapter instanceof MockProvider) {
+        adapter.setFailed();
+      } else {
+        reg.markFailed(id);
+      }
       return c.json({ provider_id: id, failed: true });
     },
   );
@@ -98,17 +129,28 @@ export function createProvidersApp(registry: ProviderRegistry) {
     (c) => {
       const reg = c.get("registry");
       const { id } = c.req.valid("param");
-      if (!reg.recover(id)) return c.json({ message: `unknown provider "${id}"` }, 404);
+      const adapter = reg.get(id);
+      if (!adapter) return c.json({ message: `unknown provider "${id}"` }, 404);
+      if (adapter instanceof MockProvider) {
+        adapter.setRecovered();
+      } else {
+        reg.recover(id);
+      }
       return c.json({ provider_id: id, failed: false });
     },
   );
 
-  // Recover all failed providers at once — useful for demo resets.
+  // Recover all providers at once — useful for demo resets.
   app.post("/providers/recover-all", (c) => {
     const reg = c.get("registry");
     const recovered: string[] = [];
     for (const adapter of reg.list()) {
-      if (reg.isFailed(adapter.providerId)) {
+      if (adapter instanceof MockProvider) {
+        if (adapter.isFailed) {
+          adapter.setRecovered();
+          recovered.push(adapter.providerId);
+        }
+      } else if (reg.isFailed(adapter.providerId)) {
         reg.recover(adapter.providerId);
         recovered.push(adapter.providerId);
       }
@@ -121,6 +163,12 @@ export function createProvidersApp(registry: ProviderRegistry) {
   // routeable provider must speak HTTP. These routes forward quote/deliver/
   // health to the in-process MockProvider adapters registered at boot — the
   // demo set can be paid and delivered against without separate mock servers.
+  //
+  // When a MockProvider has _failed=true, adapter.quote() returns err(...),
+  // and this route returns 503 — exactly what a real external provider that is
+  // down would do. The RemoteProviderAdapter in the orchestrator catches the
+  // non-2xx response and returns err(kind=timeout), which the node machine
+  // treats as a retriable failure.
 
   app.post(
     "/mock/:id/quote",
@@ -136,7 +184,7 @@ export function createProvidersApp(registry: ProviderRegistry) {
       if (!adapter) return c.json({ message: `unknown mock provider "${id}"` }, 404);
       const quoteRes = await adapter.quote(c.req.valid("json").goal);
       if (!quoteRes.ok) {
-        return c.json({ message: quoteRes.error.message }, 502);
+        return c.json({ message: quoteRes.error.message }, 503);
       }
       return c.json(quoteRes.value);
     },
@@ -163,7 +211,7 @@ export function createProvidersApp(registry: ProviderRegistry) {
       const { invoice_id, payment_ref, input } = c.req.valid("json");
       const deliverRes = await adapter.deliver(invoice_id, payment_ref, input);
       if (!deliverRes.ok) {
-        return c.json({ message: deliverRes.error.message }, 502);
+        return c.json({ message: deliverRes.error.message }, 503);
       }
       return c.json(deliverRes.value);
     },
