@@ -1,6 +1,6 @@
 import { memo } from "react";
-import { Handle, Position, NodeProps } from "@xyflow/react";
-import { NodeState } from "../types";
+import { Handle, Position, type NodeProps } from "@xyflow/react";
+import type { NodeState } from "../types";
 
 export interface StepNodeData {
   label: string;

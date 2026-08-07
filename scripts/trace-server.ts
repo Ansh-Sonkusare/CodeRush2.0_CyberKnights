@@ -50,6 +50,16 @@ function broadcast(event: string, payload: unknown): void {
 }
 
 // ─── HTTP helpers ─────────────────────────────────────────────────────────────
+/** Map a task node to its adversarial provider for the demo attack scenario. */
+function evilProviderFor(nodeId: string): string {
+  const evilByNode: Record<string, string> = {
+    "n-search": "evil-search",
+    "n-extract": "evil-extract",
+    "n-rank": "evil-rank",
+  };
+  return evilByNode[nodeId];
+}
+
 function readBody(req: http.IncomingMessage): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
     let data = "";
@@ -118,15 +128,27 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && url.pathname === "/api/run") {
       if (running) { send(res, 409, { error: "already_running" }); return; }
       running = true;
+      const body = await readBody(req);
+      const cap = typeof body.cap === "number" ? body.cap : undefined;
+      const attackNode = typeof body.attack === "string" ? body.attack : undefined;
       send(res, 200, { ok: true, message: "task started — watch /ws for events" });
 
       // Run async, don't await in the request handler
       setImmediate(async () => {
         const ledger = new Ledger(false);
         const wallet = new SimulatedWallet();
-        const treasury = new Treasury(TASK_GRAPH.task_id, TASK_GRAPH.budget_cap);
+        const treasury = new Treasury(
+          TASK_GRAPH.task_id,
+          cap ?? TASK_GRAPH.budget_cap,
+        );
         const bus = new ExecutorBus();
-        activeExecutor = new TaskExecutor({ ledger, wallet, treasury, graph: TASK_GRAPH, bus });
+        const forcedProviders = attackNode
+          ? { [attackNode]: evilProviderFor(attackNode) }
+          : undefined;
+        activeExecutor = new TaskExecutor({
+          ledger, wallet, treasury, graph: TASK_GRAPH, bus,
+          forcedProviders,
+        });
 
         // Forward every bus event to WebSocket clients
         const events = [

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { WsEvent, NodeState, NodePhase, BudgetStatus, PauseInfo, ExecutionSummary } from "../types";
+import type { WsEvent, NodeState, NodePhase, BudgetStatus, PauseInfo, ExecutionSummary } from "../types";
+import type { GuardViolation } from "../api-types";
 
 const WS_URL = "ws://localhost:4300/ws";
 
@@ -9,7 +10,7 @@ export interface GraphState {
   pauseInfo: PauseInfo | null;
   taskStatus: "idle" | "running" | "paused" | "done" | "aborted";
   summary: ExecutionSummary | null;
-  violations: Array<{ nodeId: string; violation: WsEvent extends { event: "node_blocked" } ? WsEvent["violation"] : never }>;
+  violations: Array<{ nodeId: string; violation: GuardViolation }>;
   events: WsEvent[];
 }
 
@@ -124,7 +125,7 @@ function applyEvent(prev: GraphState, ev: WsEvent): GraphState {
           violation: ev.violation,
           provider: ev.provider,
         }),
-        violations: [...prev.violations, { nodeId: ev.nodeId, violation: ev.violation as never }],
+        violations: [...prev.violations, { nodeId: ev.nodeId, violation: ev.violation }],
       };
     }
 

@@ -14,6 +14,8 @@
     "demo3": "tsx scripts/phase3-demo.ts",
     "phase4": "tsx scripts/phase4-guard-demo.ts",
     "guard": "tsx scripts/phase4-guard-demo.ts",
+    "demo5": "tsx scripts/phase5-demo.ts",
+    "bandit-eval": "tsx scripts/bandit-eval.ts",
     "typecheck": "tsc --noEmit",
     "start": "tsx scripts/phase1-smoke.ts"
   },

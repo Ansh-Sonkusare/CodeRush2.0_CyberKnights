@@ -1,4 +1,4 @@
-import { TaskGraph, TaskStep } from "../types.js";
+import { TaskGraph, TaskStep, Capability, ProviderCatalogEntry } from "../types.js";
 import { Ledger } from "../ledger/ledger.js";
 import { SimulatedWallet } from "../wallet/wallet.js";
 import { Treasury, BudgetStatus } from "../treasury/treasury.js";
@@ -6,6 +6,8 @@ import { OptimizerWeights, DEFAULT_WEIGHTS, RouteDecision, pickProvider, pickFal
 import { runPaidCall, idempotencyKey } from "./paidCall.js";
 import { createLedgerRow } from "../ledger/schema.js";
 import { ExecutorBus } from "./executorEvents.js";
+import { PROVIDER_CATALOG, ADVERSARIAL_CATALOG } from "../config/providers.js";
+import { BanditOptimizer } from "./banditOptimizer.js";
 
 export type StepStatus =
   | "running"
@@ -56,6 +58,14 @@ export class TaskExecutor {
   private goal: string;
   private scopeMax: number;
   private bus?: ExecutorBus;
+  /** Scenario knob: force specific nodes onto a provider (e.g. an adversarial
+   *  one) for the demo. The guard still gates the response — this only picks
+   *  who pays, it never weakens policy. */
+  private forcedProviders?: Record<string, string>;
+  /** When enabled, route decisions come from the UCB1 bandit (which learns
+   *  from observed latency/quality/price) instead of static baseline weights. */
+  private useBandit = false;
+  private bandit?: BanditOptimizer;
 
   private outputs = new Map<string, Record<string, unknown>>();
   private results = new Map<string, StepExecution>();
@@ -77,6 +87,12 @@ export class TaskExecutor {
     scope_max?: number;
     /** Optional event bus for real-time UI streaming. Existing callers can omit this. */
     bus?: ExecutorBus;
+    /** Force specific nodes onto a provider (demo scenario knob). Optional. */
+    forcedProviders?: Record<string, string>;
+    /** Route via UCB1 bandit, learning from real outcomes. Pass an instance to
+     *  share a bandit across runs (so it keeps learning); pass true to create a
+     *  fresh one per executor. Optional. */
+    useBandit?: boolean | BanditOptimizer;
   }) {
     this.ledger = opts.ledger;
     this.wallet = opts.wallet;
@@ -86,6 +102,10 @@ export class TaskExecutor {
     this.goal = opts.goal ?? opts.graph.goal;
     this.scopeMax = opts.scope_max ?? opts.graph.budget_cap;
     this.bus = opts.bus;
+    this.forcedProviders = opts.forcedProviders;
+    this.useBandit = opts.useBandit === true || opts.useBandit instanceof BanditOptimizer;
+    this.bandit = opts.useBandit instanceof BanditOptimizer ? opts.useBandit : undefined;
+    if (this.useBandit && !this.bandit) this.bandit = new BanditOptimizer();
   }
 
   async run(): Promise<ExecutionSummary> {
@@ -111,7 +131,7 @@ export class TaskExecutor {
       let decideFailed = false;
       for (const s of ready) {
         try {
-          decisions.set(s.id, pickProvider(s.capability, this.weights));
+          decisions.set(s.id, this.decisionFor(s));
         } catch (err) {
           decideFailed = true;
           this.started.add(s.id);
@@ -275,6 +295,7 @@ export class TaskExecutor {
         attempt: attemptNum,
       });
 
+      const attemptStarted = Date.now();
       try {
         const res = await runPaidCall({
           ledger: this.ledger,
@@ -292,6 +313,7 @@ export class TaskExecutor {
         });
         this.treasury.settle(step.id);
         this.outputs.set(step.id, res.response);
+        this.observeOutcome(step.capability, current.provider, attemptStarted, true);
         entry.status = "success";
         entry.finishedAt = new Date().toISOString();
         entry.txRef = res.settlement.tx_ref;
@@ -306,6 +328,7 @@ export class TaskExecutor {
         return;
       } catch (err) {
         this.treasury.release(step.id);
+        this.observeOutcome(step.capability, current.provider, attemptStarted, false);
         existingLedgerId = undefined;
         const errMsg = String(err);
         attempts.push(errMsg);
@@ -327,7 +350,9 @@ export class TaskExecutor {
           }
         }
 
-        const next = pickFallback(step.capability, [...tried], this.weights);
+        const next =
+          this.banditDecision(step.capability, [...tried]) ??
+          pickFallback(step.capability, [...tried], this.weights);
         if (!next) {
           entry.status = "declared_failure";
           entry.finishedAt = new Date().toISOString();
@@ -339,6 +364,69 @@ export class TaskExecutor {
         current = next;
       }
     }
+  }
+
+  private decisionFor(step: TaskStep): RouteDecision {
+    const forced = this.forcedProviders?.[step.id];
+    if (forced) {
+      const entry =
+        PROVIDER_CATALOG.find((p) => p.provider_id === forced && p.capability === step.capability) ??
+        ADVERSARIAL_CATALOG.find((p) => p.provider_id === forced && p.capability === step.capability);
+      if (!entry) {
+        throw new Error(`forced provider "${forced}" not in catalog for "${step.capability}"`);
+      }
+      return {
+        provider: entry,
+        score: 0,
+        priceNorm: 0,
+        latencyNorm: 0,
+        qualityPenalty: 0,
+        reason: `scenario-forced: ${forced} (demo override — guard still enforces policy)`,
+      };
+    }
+    return (
+      this.banditDecision(step.capability) ??
+      pickProvider(step.capability, this.weights)
+    );
+  }
+
+  /** Bandit-informed route decision, or null when bandit routing is off. */
+  private banditDecision(
+    capability: Capability,
+    excludeProviderIds: string[] = [],
+  ): RouteDecision | null {
+    if (!this.useBandit || !this.bandit) return null;
+    const pick = this.bandit.pick(capability, excludeProviderIds);
+    if (!pick) return null;
+    return {
+      provider: pick.provider,
+      score: 0,
+      priceNorm: 0,
+      latencyNorm: 0,
+      qualityPenalty: 0,
+      reason: pick.reason,
+    };
+  }
+
+  /** Feed the bandit the realized outcome so it can learn which provider is
+   *  actually cheap and fast. Quality is the catalog claim (mock providers
+   *  expose no runtime quality signal); latency is the paid call's wall-clock. */
+  private observeOutcome(
+    capability: Capability,
+    provider: ProviderCatalogEntry,
+    startedAtMs: number,
+    success: boolean,
+  ): void {
+    if (!this.useBandit || !this.bandit) return;
+    const latencyMs = Math.max(0, Date.now() - startedAtMs);
+    this.bandit.updateArm(
+      capability,
+      provider.provider_id,
+      provider.quality_score,
+      latencyMs,
+      provider.price,
+      success,
+    );
   }
 
   private assembleInput(step: TaskStep): Record<string, unknown> {

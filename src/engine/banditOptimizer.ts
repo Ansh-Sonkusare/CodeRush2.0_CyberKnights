@@ -2,7 +2,7 @@ import { Capability, ProviderCatalogEntry } from "../types.js";
 import { PROVIDER_CATALOG } from "../config/providers.js";
 
 /** Per-provider bandit stats for one capability. */
-interface ArmStats {
+export interface ArmStats {
   provider_id: string;
   n_pulls: number;
   total_reward: number;
@@ -19,7 +19,7 @@ function initArm(providerId: string): ArmStats {
  *   quality_score contributes positively,
  *   price and latency contribute negatively (normalized by rough maxima).
  */
-function computeReward(
+export function computeReward(
   qualityScore: number,
   latencyMs: number,
   price: number,

@@ -92,14 +92,30 @@ schema failure/timeout. Planner can propose graphs only — never budgets/scopes
 
 ---
 
-## Phase 5 — Bandit route optimizer + held-out eval harness ⏳
+## Phase 5 — Bandit route optimizer + held-out eval harness ✅
 
-UCB1 `BanditOptimizer` is already written (`src/engine/banditOptimizer.ts`);
+UCB1 `BanditOptimizer` was already written (`src/engine/banditOptimizer.ts`);
 this phase wires it into the executor and proves it beats baseline.
 
-- [ ] Wire `BanditOptimizer` into executor (`useBandit` flag)
-- [ ] Held-out eval harness vs baseline on held-out provider combinations
-- [ ] Cumulative cost/regret report in dashboard
+- [x] Wire `BanditOptimizer` into executor via `useBandit` option
+      (`src/engine/executor.ts`): bandit picks in `decisionFor` + fallbacks,
+      and `observeOutcome()` feeds the bandit the realized latency/price on
+      every success and failure so it learns across runs. A `BanditOptimizer`
+      instance can be shared across executors to keep learning.
+- [x] Held-out eval harness vs baseline on held-out provider combinations —
+      `scripts/bandit-eval.ts` (seeded, common random numbers). Headline metric
+      is cumulative delivered reward; regret vs the per-capability oracle is
+      reported too. Two scenarios: `adversarial-holdout` (the catalog favorites
+      secretly under-deliver; the bandit discovers the true ranking and wins
+      5/5 capabilities) and `control-truthful` (catalog claims are accurate; the
+      bandit loses by ~3.7%, i.e. it does not win when there is nothing to learn).
+- [x] Cumulative cost/regret report in dashboard — `npm run bandit-eval` writes
+      `data/bandit-report.json`, served at `/api/bandit-report` and rendered in
+      a "Bandit eval report" card on the dashboard.
+- [x] `npm run demo5` runs the wired executor over real HTTP: a baseline run vs
+      6 bandit runs sharing one `BanditOptimizer`, showing explore → exploit and
+      the learned arm stats.
+- [x] `npm run typecheck` clean; all prior demos still pass.
 
 ---
 

@@ -70,8 +70,9 @@ RECONCILE  ledger row closed: quote → auth → payment → settlement → resp
 - `src/engine/paidCall.ts` — one full paid x402 call; wires ledger + wallet +
   provider + guard in the exact transaction order. **The guard sits here.**
 - `src/engine/routeOptimizer.ts` — baseline weighted scoring (price/latency/quality)
-  with human-readable reasons; `src/engine/banditOptimizer.ts` — UCB1 bandit
-  (written, not yet wired into the executor).
+  with human-readable reasons; `src/engine/banditOptimizer.ts` — UCB1 bandit,
+  wired into the executor via the `useBandit` option (learns from realized
+  latency/price on every success and failure).
 - `src/guard/responseSchema.ts` + `src/guard/guard.ts` — strict Zod contract and the
   `.safeParse()` gate that classifies and logs `blocked_policy_violation`.
 - `src/treasury/treasury.ts` — reserve → settle on success → release on failure;
@@ -93,8 +94,10 @@ RECONCILE  ledger row closed: quote → auth → payment → settlement → resp
 1. **Plan** — a task graph is produced: today it is the hardcoded
    `src/config/taskGraph.ts`; Phase 4 swaps in an LLM planner (Gemini/Ollama,
    Zod-constrained) with the hardcoded graph as fallback.
-2. **Route** — for each ready step the executor calls `pickProvider()` (baseline)
-   or `pickFallback()` on failure, recording an explainable "why".
+2. **Route** — for each ready step the executor calls `pickProvider()` (baseline),
+   or — with the `useBandit` option — the UCB1 `BanditOptimizer` (fallbacks stay
+   bandit-aware), recording an explainable "why". Every success/failure feeds the
+   bandit a reward (wall-clock latency + price) so it learns across runs.
 3. **Authorize** — treasury checks the whole parallel wave fits the cap; if not,
    the executor **pauses** and a human approves/denies (`approve()` / `reject()`).
 4. **Pay** — `runPaidCall()` runs the transaction: `/invoice` → 402 + terms,
@@ -153,6 +156,8 @@ guard-passed, ledger-stamped results.
 | Executor/treasury/approval | `npm run demo2` | Phase 2 legacy |
 | Failure injection / fallback | `npm run demo3` | Phase 3 legacy |
 | Adversarial guard demo | `npm run guard` (alias `npm run phase4`) | Phase 2 |
+| Bandit routing demo | `npm run demo5` | Phase 5 |
+| Bandit eval harness | `npm run bandit-eval` | Phase 5; writes `data/bandit-report.json` |
 | Static dashboard | `npm run dashboard` | http://127.0.0.1:4200 |
 | Live trace server | `npm run trace-server` | http://localhost:4300 (+ `/ws`) |
 | UI dev server | `cd ui && npm run dev` | http://localhost:5173 (Phase 3, in progress) |

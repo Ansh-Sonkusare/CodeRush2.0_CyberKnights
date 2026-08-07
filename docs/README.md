@@ -20,6 +20,7 @@ actually execute, updated with every change.
 | 1 — Schemas & guard | ✅ done | `npm run guard` |
 | 2 — Adversarial providers | ✅ done | `npm run guard` / `npm run phase4` |
 | 3 — Live trace UI | ⏳ next | — |
+| 5 — Bandit routing + eval harness | ✅ done | `npm run demo5`, `npm run bandit-eval` |
 
 ## How to run
 
@@ -31,7 +32,9 @@ npm run demo2          # executor / treasury / approval (legacy)
 npm run demo3          # failure injection / fallback (legacy)
 npm run guard          # Phase 2 — adversarial attack demo (all 3 attacks blocked)
 npm run phase4         # alias for npm run guard
-npm run dashboard      # local dashboard on :4200 (includes adversarial chips + violation UI)
+npm run demo5          # Phase 5 — UCB1 bandit wired into the executor (real HTTP, live learning)
+npm run bandit-eval    # Phase 5 — held-out eval: bandit vs baseline, writes data/bandit-report.json
+npm run dashboard      # local dashboard on :4200 (adversarial chips + bandit eval report card)
 ```
 
 The provider mock servers (ports 4101–4103) and adversarial servers
