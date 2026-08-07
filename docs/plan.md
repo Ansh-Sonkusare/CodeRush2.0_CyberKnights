@@ -88,16 +88,47 @@ ported into the live UI as a panel).
 
 ---
 
-## Phase 4 — LLM planner (Gemini/Ollama) with hardcoded fallback ⏳
+## Phase 4 — LLM planner (Gemini/Ollama) with hardcoded fallback ✅
 
 Zod-constrained task-graph output, swappable backend, graceful degradation on
 schema failure/timeout. Planner can propose graphs only — never budgets/scopes.
 
-- [ ] Task-graph Zod schema (`zod-to-json-schema` for structured output)
-- [ ] Gemini backend (`@google/genai`)
-- [ ] Ollama backend
-- [ ] Hardcoded-graph fallback on schema failure/timeout
-- [ ] Verify planner can never emit budgets/scopes
+- [x] Task-graph Zod contract (`src/planner/plannerSchema.ts`, `.strict()` on
+      root + steps). The JSON schema handed to the model for structured output
+      is hand-authored to mirror the Zod contract — `zod-to-json-schema` is
+      incompatible with the repo's zod v4 (it silently emits empty schemas), so
+      the dependency was dropped rather than downgrading zod.
+- [x] Gemini backend (`@google/genai`) — `GeminiPlanner`, used when
+      `GEMINI_API_KEY` is set (`responseMimeType: "application/json"` +
+      `responseSchema`).
+- [x] Ollama backend — `OllamaPlanner`, plain `fetch` to `/api/chat` with
+      `format: <json-schema>`, stream off.
+- [x] OpenAI-compatible backend — `OpenAICompatiblePlanner`, plain `fetch` to
+      `${LLM_BASE_URL}/chat/completions` with `Authorization: Bearer` and
+      `response_format: { type: "json_object" }`, so any key speaking OpenAI
+      routes works (Groq, OpenRouter, Together, OpenAI, vLLM, …). Backend is
+      chosen by `LLM_PROVIDER` (gemini | openai-compatible | ollama) with
+      unified `LLM_BASE_URL`/`LLM_API_KEY`/`LLM_MODEL`/`LLM_TEMPERATURE`/
+      `LLM_MAX_TOKENS`; legacy `GEMINI_API_KEY`/`GROQ_API_KEY`/`OPENAI_API_KEY`/
+      `OLLAMA_BASE_URL`/`OLLAMA_MODEL` act as fallbacks when `LLM_PROVIDER` is
+      unset (inferred by which key is present).
+- [x] Hardcoded-graph fallback on schema failure/timeout/outage —
+      `planWithFallback()` (45s cap) returns `src/config/taskGraph.ts`.
+- [x] Verify planner can never emit budgets/scopes — deep forbidden-key scan +
+      `.strict()` structural rejection (any `budget_cap`/`scope_token`/
+      `agent_instruction`/… is a structural rejection, not a downstream `if`);
+      `plannerGraphToTaskGraph()` stamps the treasury-owned `budget_cap`;
+      `validateGraph()` rejects duplicate/unknown deps and cycles.
+- [x] `npm run demo4` — live plan (`LLM_PROVIDER` backend, verified live against
+      both Groq (`llama-3.3-70b-versatile`, `response_format: json_object`) and
+      Gemini (`gemini-3.5-flash`)), adversarial plan rejections, forced-fallback,
+      and the planned graph run end-to-end through the executor (all 5
+      capabilities covered by the provider catalog). `temperature`/`max_tokens`
+      flow from `LLM_TEMPERATURE`/`LLM_MAX_TOKENS`. The Ollama path is verified
+      against a mock `/api/chat` (the user's Ollama host is not reachable from
+      the dev sandbox). A transient 429/503 fell back cleanly, so graceful
+      degradation was observed live. typecheck + all prior demos + `ui` build
+      stay green.
 
 ---
 
