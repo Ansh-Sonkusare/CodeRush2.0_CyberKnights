@@ -1,4 +1,6 @@
 import http from "node:http";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { startAllProviders, stopAllProviders, ServerHandle } from "./start-providers.js";
 import { Ledger } from "../src/ledger/ledger.js";
 import { SimulatedWallet } from "../src/wallet/wallet.js";
@@ -209,6 +211,10 @@ const HTML = `<!doctype html>
     <h1 style="font-size:15px">Trace (full reconciliation)</h1>
     <pre id="trace">—</pre>
   </div>
+  <div class="card" style="border-color:#2a1c4a">
+    <h1 style="font-size:15px">Bandit eval report <span style="color:#8b93a7;font-size:12px">(refresh with <code>npm run bandit-eval</code>)</span></h1>
+    <div id="bandit">loading&hellip;</div>
+  </div>
 <script>
   const $ = (id) => document.getElementById(id);
   async function refreshHealth() {
@@ -306,7 +312,34 @@ const HTML = `<!doctype html>
       $('run').disabled = false;
     }
   }
+  async function loadBanditReport() {
+    try {
+      const res = await fetch('/api/bandit-report');
+      const d = await res.json();
+      if (d.error) { $('bandit').textContent = d.error; return; }
+      let html = '';
+      for (const s of d.scenarios) {
+        const win = s.totals.bandit.reward_sum > s.totals.baseline.reward_sum ? 'bandit' : 'baseline';
+        html += '<div style="margin:10px 0"><span style="font-weight:bold">' + s.name + '</span>'
+          + ' <span style="color:#8b93a7">(' + s.rounds + ' rounds, seeded)</span>'
+          + ' <span style="color:#4ade80">verdict: ' + win + '</span>'
+          + '<table><tr><th>arm</th><th>reward</th><th>cost</th><th>regret</th><th>mean quality</th><th>mean latency</th></tr>';
+        for (const arm of ['baseline', 'bandit']) {
+          const t = s.totals[arm];
+          html += '<tr><td>' + arm + '</td><td class="money">' + t.reward_sum.toFixed(0) + '</td>'
+            + '<td class="money">$' + t.total_cost.toFixed(2) + '</td><td>' + t.regret.toFixed(1) + '</td>'
+            + '<td>' + (t.quality_sum / Math.max(1, t.n)).toFixed(2) + '</td>'
+            + '<td>' + Math.round(t.latency_sum / Math.max(1, t.n)) + 'ms</td></tr>';
+        }
+        html += '</table></div>';
+      }
+      $('bandit').innerHTML = html;
+    } catch (e) {
+      $('bandit').textContent = 'bandit report unavailable';
+    }
+  }
   refreshHealth();
+  loadBanditReport();
   setInterval(refreshHealth, 5000);
 </script>
 </body>
@@ -372,6 +405,15 @@ async function main(): Promise<void> {
       }
       if (req.method === "GET" && url.pathname === "/api/replay") {
         send(res, 200, replayCheck());
+        return;
+      }
+      if (req.method === "GET" && url.pathname === "/api/bandit-report") {
+        try {
+          const raw = await readFile(join(process.cwd(), "data", "bandit-report.json"), "utf8");
+          send(res, 200, JSON.parse(raw));
+        } catch {
+          send(res, 200, { error: "bandit report not found — run `npm run bandit-eval` first" });
+        }
         return;
       }
       send(res, 404, { error: "not_found" });

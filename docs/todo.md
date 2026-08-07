@@ -44,11 +44,15 @@ running demo/typecheck, not just written.
 - [ ] Hardcoded-graph fallback on schema failure/timeout
 - [ ] Verify planner can never emit budgets/scopes
 
-## Phase 5 — Bandit optimizer (wire up + eval harness)
+## Phase 5 — Bandit optimizer (wire up + eval harness) ✅ done
 
-- [ ] Wire `BanditOptimizer` into executor (`useBandit` flag)
-- [ ] Held-out eval harness vs baseline
-- [ ] Cumulative cost/regret report in dashboard
+- [x] Wire `BanditOptimizer` into executor (`useBandit` flag; bandit picks in `decisionFor` + fallbacks)
+- [x] `observeOutcome()` feeds realized latency/price into the bandit on success and failure
+- [x] `npm run demo5` — baseline vs 6 real-HTTP bandit runs with one shared bandit (explore → exploit)
+- [x] `npm run bandit-eval` — seeded held-out harness, common random numbers, cumulative delivered-reward
+- [x] Scenarios: `adversarial-holdout` (bandit wins 5/5, ~87% more reward, 91% lower regret) + `control-truthful` (bandit ≈ baseline, only exploration cost)
+- [x] Report written to `data/bandit-report.json`; served at `/api/bandit-report` with a dashboard card
+- [x] `npm run typecheck` clean; all legacy demos still pass
 
 ## Phase 6 — Multi-scheme + stale quote
 

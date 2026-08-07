@@ -9,10 +9,14 @@
     "preview": "vite preview"
   },
   "devDependencies": {
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
     "typescript": "~6.0.2",
     "vite": "^8.2.0"
   },
   "dependencies": {
-    "@xyflow/react": "^12.11.2"
+    "@xyflow/react": "^12.11.2",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
   }
 }

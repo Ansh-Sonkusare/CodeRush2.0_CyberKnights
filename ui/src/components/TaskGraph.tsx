@@ -7,15 +7,15 @@ import {
   useNodesState,
   useEdgesState,
   addEdge,
-  Connection,
-  Node,
-  Edge,
   BackgroundVariant,
+  type Connection,
+  type Node,
+  type Edge,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { TaskGraph } from "../api-types";
-import { NodeState } from "../types";
-import StepNode, { StepNodeData } from "./StepNode";
+import type { TaskGraph } from "../api-types";
+import type { NodeState } from "../types";
+import StepNode, { type StepNodeData } from "./StepNode";
 
 const NODE_TYPES = { stepNode: StepNode };
 

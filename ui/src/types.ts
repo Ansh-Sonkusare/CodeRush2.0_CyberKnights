@@ -1,4 +1,4 @@
-import { GuardViolation, TaskGraph } from "./api-types";
+import type { GuardViolation, TaskGraph } from "./api-types";
 
 // ─── WsEvent shapes ────────────────────────────────────────────────────────────
 
