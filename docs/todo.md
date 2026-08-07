@@ -38,13 +38,23 @@ running demo/typecheck, not just written.
 - [x] Verified: `ui` production build clean + WS smoke over all 6 scenarios
       (happy, 3 attacks, tight-cap approve, tight-cap deny)
 
-## Phase 4 — LLM planner
+## Phase 4 — LLM planner ✅ done
 
-- [ ] Task-graph Zod schema (`zod-to-json-schema` for structured output)
-- [ ] Gemini backend (`@google/genai`)
-- [ ] Ollama backend
-- [ ] Hardcoded-graph fallback on schema failure/timeout
-- [ ] Verify planner can never emit budgets/scopes
+- [x] Task-graph Zod schema (`src/planner/plannerSchema.ts`, strict); JSON schema
+      for structured output is hand-authored — `zod-to-json-schema` dropped
+      (incompatible with the repo's zod v4, emits empty schemas)
+- [x] Gemini backend (`@google/genai`) — `GeminiPlanner` (live-verified, `gemini-3.5-flash` default)
+- [x] Ollama backend — `OllamaPlanner` (`/api/chat`, `format: <json-schema>`)
+- [x] OpenAI-compatible backend — `OpenAICompatiblePlanner` (`/chat/completions`,
+      Bearer auth, `response_format: json_object`); works with Groq/OpenRouter/OpenAI/…
+- [x] Unified `LLM_*` env config (`LLM_PROVIDER`/`LLM_BASE_URL`/`LLM_API_KEY`/
+      `LLM_MODEL`/`LLM_TEMPERATURE`/`LLM_MAX_TOKENS`) with legacy key fallbacks
+- [x] Hardcoded-graph fallback on schema failure/timeout/backend outage (`planWithFallback`)
+- [x] Verify planner can never emit budgets/scopes — forbidden-key scan + strict
+      rejection + treasury-stamped `budget_cap` + `validateGraph` (cycles/bad deps)
+- [x] `npm run demo4` — live plan (Groq + Gemini verified live), adversarial
+      rejections, forced fallback, planned graph end-to-end through the executor
+- [x] `npm run typecheck` clean; all prior demos + `ui` build still pass
 
 ## Phase 5 — Bandit optimizer (wire up + eval harness) ✅ done
 

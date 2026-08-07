@@ -11,6 +11,7 @@
     "trace-server": "tsx scripts/trace-server.ts",
     "demo2": "tsx scripts/phase2-demo.ts",
     "demo3": "tsx scripts/phase3-demo.ts",
+    "demo4": "tsx scripts/phase4-planner-demo.ts",
     "phase4": "tsx scripts/phase4-guard-demo.ts",
     "guard": "tsx scripts/phase4-guard-demo.ts",
     "demo5": "tsx scripts/phase5-demo.ts",
@@ -24,6 +25,7 @@
     "typescript": "^5.6.0"
   },
   "dependencies": {
+    "@google/genai": "^2.16.0",
     "@types/ws": "^8.18.1",
     "ws": "^8.21.3",
     "zod": "^4.4.3"

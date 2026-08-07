@@ -20,6 +20,7 @@ actually execute, updated with every change.
 | 1 — Schemas & guard | ✅ done | `npm run guard` |
 | 2 — Adversarial providers | ✅ done | `npm run guard` / `npm run phase4` |
 | 3 — Live trace UI | ✅ done | `npm run trace-server` + `cd ui && npm run dev` |
+| 4 — LLM planner + fallback | ✅ done | `npm run demo4` |
 | 5 — Bandit routing + eval harness | ✅ done | `npm run demo5`, `npm run bandit-eval` |
 
 ## How to run
@@ -32,6 +33,10 @@ npm run demo2          # executor / treasury / approval (legacy)
 npm run demo3          # failure injection / fallback (legacy)
 npm run guard          # Phase 2 — adversarial attack demo (all 3 attacks blocked)
 npm run phase4         # alias for npm run guard
+npm run demo4          # Phase 4 — LLM planner (gemini | openai-compatible | ollama),
+                       #   with hardcoded-graph fallback; reads LLM_PROVIDER /
+                       #   LLM_BASE_URL / LLM_API_KEY / LLM_MODEL / LLM_TEMPERATURE /
+                       #   LLM_MAX_TOKENS from .env.local or the shell
 npm run demo5          # Phase 5 — UCB1 bandit wired into the executor (real HTTP, live learning)
 npm run bandit-eval    # Phase 5 — held-out eval: bandit vs baseline, writes data/bandit-report.json
 

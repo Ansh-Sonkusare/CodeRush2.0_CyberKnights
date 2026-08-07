@@ -85,6 +85,19 @@ RECONCILE  ledger row closed: quote → auth → payment → settlement → resp
   attack payloads).
 - `src/config/providers.ts` + `src/config/taskGraph.ts` — provider catalog and the
   default 5-step task graph.
+- `src/planner/` — Phase 4 ✅ LLM task-graph planner: `plannerSchema.ts` (strict
+  Zod contract + hand-authored JSON schema for structured output + `validateGraph`
+  / `plannerGraphToTaskGraph`) and `planner.ts` (`OllamaPlanner`,
+  `GeminiPlanner`, `OpenAICompatiblePlanner`, `createPlanner`,
+  `planWithFallback` → hardcoded `TASK_GRAPH` on schema failure/timeout/outage).
+  Backend is selected by `LLM_PROVIDER` (gemini | openai-compatible | ollama)
+  with unified `LLM_BASE_URL`/`LLM_API_KEY`/`LLM_MODEL`/`LLM_TEMPERATURE`/
+  `LLM_MAX_TOKENS` env, falling back to the legacy `GEMINI_API_KEY`,
+  `GROQ_API_KEY`/`OPENAI_API_KEY`, `OLLAMA_BASE_URL`/`OLLAMA_MODEL` when
+  `LLM_PROVIDER` is unset (inferred: gemini key → gemini; groq/openai key →
+  openai-compatible; else ollama). Model output is structurally forbidden from
+  carrying budget/scope fields; `plannerGraphToTaskGraph()` stamps the
+  treasury-owned `budget_cap`.
 - `scripts/` — runnable demos (`preview`, `demo2`, `demo3`, `guard`, `demo5`),
   the eval harness (`bandit-eval`), the live-trace server (`trace-server`).
 - `ui/` — React + React Flow live-trace UI (Phase 3 ✅): task graph with live
@@ -94,9 +107,15 @@ RECONCILE  ledger row closed: quote → auth → payment → settlement → resp
 
 ## 3. Workflow (how a task runs end-to-end)
 
-1. **Plan** — a task graph is produced: today it is the hardcoded
-   `src/config/taskGraph.ts`; Phase 4 swaps in an LLM planner (Gemini/Ollama,
-   Zod-constrained) with the hardcoded graph as fallback.
+1. **Plan** — the LLM planner (`src/planner/`) decomposes the goal into a
+   Zod-constrained task graph. The backend is `LLM_PROVIDER` (gemini |
+   openai-compatible | ollama), defaulting to any compatible key when unset;
+   Gemini uses `@google/genai`, `openai-compatible` speaks
+   `/chat/completions` (Groq, OpenRouter, OpenAI, …), Ollama uses `/api/chat`.
+   On schema failure, timeout, or backend outage `planWithFallback()` returns
+   the hardcoded `src/config/taskGraph.ts`. The planner proposes structure
+   only — it can never set budgets or scopes (`budget_cap` is stamped by the
+   treasury).
 2. **Route** — for each ready step the executor calls `pickProvider()` (baseline),
    or — with the `useBandit` option — the UCB1 `BanditOptimizer` (fallbacks stay
    bandit-aware), recording an explainable "why". Every success/failure feeds the
@@ -148,7 +167,7 @@ guard-passed, ledger-stamped results.
   doc-comments to explain *why* (e.g. idempotency semantics, guard philosophy).
   Match that tone; don't narrate the obvious.
 - **Don't add dependencies without asking.** The repo is intentionally minimal
-  (`zod`, `ws`, `tsx` today).
+  (`zod`, `ws`, `tsx`, `@google/genai` today).
 
 ## 6. Commands (verified from `package.json`)
 
@@ -159,6 +178,7 @@ guard-passed, ledger-stamped results.
 | Executor/treasury/approval | `npm run demo2` | Phase 2 legacy |
 | Failure injection / fallback | `npm run demo3` | Phase 3 legacy |
 | Adversarial guard demo | `npm run guard` (alias `npm run phase4`) | Phase 2 |
+| LLM planner demo | `npm run demo4` | Phase 4; reads `LLM_PROVIDER`/`LLM_BASE_URL`/`LLM_API_KEY`/`LLM_MODEL`/`LLM_TEMPERATURE`/`LLM_MAX_TOKENS` (from `.env.local` or shell), with legacy `GEMINI_API_KEY`/`GROQ_API_KEY`/`OLLAMA_BASE_URL`/`OLLAMA_MODEL` fallbacks |
 | Bandit routing demo | `npm run demo5` | Phase 5 |
 | Bandit eval harness | `npm run bandit-eval` | Phase 5; writes `data/bandit-report.json` |
 | Live trace server | `npm run trace-server` | http://localhost:4300 (+ `/ws`; serves `/api/bandit-report`) |
