@@ -20,6 +20,8 @@
     "@sentinel/x402-client": "workspace:*",
     "@sentinel/policy-guard": "workspace:*",
     "@sentinel/router": "workspace:*",
+    "@sentinel/ledger": "workspace:*",
+    "@sentinel/providers": "workspace:*",
     "hono": "^4.11.2",
     "xstate": "^5.18.0",
     "zod": "^4.4.3"

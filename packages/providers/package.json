@@ -1,5 +1,5 @@
 {
-  "name": "@sentinel/orchestrator",
+  "name": "@sentinel/providers",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -18,14 +18,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@sentinel/schemas": "workspace:*",
-    "@sentinel/treasury": "workspace:*",
-    "@sentinel/x402-client": "workspace:*",
-    "@sentinel/policy-guard": "workspace:*",
-    "@sentinel/router": "workspace:*",
-    "@sentinel/ledger": "workspace:*",
-    "@sentinel/providers": "workspace:*",
-    "xstate": "^5.18.0"
+    "@sentinel/schemas": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

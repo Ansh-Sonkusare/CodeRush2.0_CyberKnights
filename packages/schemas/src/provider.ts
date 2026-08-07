@@ -39,6 +39,11 @@ export const ProviderCatalogEntryWireSchema = z
 
 export type ProviderCatalogEntryWire = z.infer<typeof ProviderCatalogEntryWireSchema>;
 
+/** Full catalog list (GET /providers response) — used by the orchestrator to
+ * build routeable adapters from whatever the registry currently holds. */
+export const ProviderCatalogEntryWireListSchema = z.array(ProviderCatalogEntryWireSchema);
+export type ProviderCatalogEntryWireList = z.infer<typeof ProviderCatalogEntryWireListSchema>;
+
 export const RegisterProviderRequestSchema = z
   .object({
     entry: ProviderCatalogEntryWireSchema,

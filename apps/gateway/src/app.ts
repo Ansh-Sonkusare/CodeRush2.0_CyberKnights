@@ -4,13 +4,17 @@ import { zValidator } from "@hono/zod-validator";
 import { hc } from "hono/client";
 import { z } from "zod";
 import {
+  ApproveRequestSchema,
   CapabilitySchema,
   CreateLedgerRowRequestSchema,
   PlanRequestSchema,
   RegisterProviderRequestSchema,
+  RejectRequestSchema,
+  RunRequestSchema,
   ValidateRequestSchema,
   type GatewayEnv,
   type GatewaySchema,
+  type OrchestratorRoutes,
   type PlannerRoutes,
   type ProviderRoutes,
 } from "@sentinel/schemas";
@@ -18,11 +22,10 @@ import type { AppConfig } from "@sentinel/config";
 import type { LedgerStore } from "@sentinel/ledger";
 
 // ─── Gateway (Phase 10) ───────────────────────────────────────────────────────
-// Single public entry point on :4000. Planner + provider routes delegate to the
-// microservices via typed hc<> clients (service URLs derived from config ports);
-// ledger routes are served in-process from packages/ledger. The orchestrator
-// proxy and the /ws broadcast hub land with Phase 9 (their upstream doesn't
-// exist yet).
+// Single public entry point on :4000. Planner + provider + orchestrator routes
+// delegate to the microservices via typed hc<> clients (service URLs derived
+// from config ports); ledger routes are served in-process from packages/ledger.
+// The /ws hub lives in wsHub.ts and tails the orchestrator's SSE stream.
 
 function serviceUrl(port: number): string {
   return `http://127.0.0.1:${port}`;
@@ -62,6 +65,7 @@ export function createGatewayApp(config: AppConfig, ledger: LedgerStore) {
 
   const planner = hc<PlannerRoutes>(serviceUrl(config.ports.planner));
   const providers = hc<ProviderRoutes>(serviceUrl(config.ports.providers));
+  const orchestrator = hc<OrchestratorRoutes>(serviceUrl(config.ports.orchestrator));
 
   // ─── /api/planner/* → service-planner (:4040) ──────────────────────────────
 
@@ -163,6 +167,57 @@ export function createGatewayApp(config: AppConfig, ledger: LedgerStore) {
     await ledger.reset();
     return c.json({ ok: true });
   });
+
+  // ─── /api/orchestrator/* → service-orchestrator (:4010) ─────────────────────
+
+  app.post(
+    "/api/orchestrator/run",
+    zValidator("json", RunRequestSchema),
+    (c) => {
+      const body = c.req.valid("json");
+      return proxyJson(c, () => orchestrator.orchestrator.run.$post({ json: body }));
+    },
+  );
+
+  app.post(
+    "/api/orchestrator/approve",
+    zValidator("json", ApproveRequestSchema),
+    (c) => {
+      const body = c.req.valid("json");
+      return proxyJson(c, () => orchestrator.orchestrator.approve.$post({ json: body }));
+    },
+  );
+
+  app.post(
+    "/api/orchestrator/reject",
+    zValidator("json", RejectRequestSchema),
+    (c) => {
+      const body = c.req.valid("json");
+      return proxyJson(c, () => orchestrator.orchestrator.reject.$post({ json: body }));
+    },
+  );
+
+  app.get(
+    "/api/orchestrator/status/:taskId",
+    zValidator("param", paramTaskId),
+    (c) => {
+      const { taskId } = c.req.valid("param");
+      return proxyJson(c, () =>
+        orchestrator.orchestrator.status[":taskId"].$get({ param: { taskId } }),
+      );
+    },
+  );
+
+  app.get(
+    "/api/orchestrator/nodes/:taskId",
+    zValidator("param", paramTaskId),
+    (c) => {
+      const { taskId } = c.req.valid("param");
+      return proxyJson(c, () =>
+        orchestrator.orchestrator.nodes[":taskId"].$get({ param: { taskId } }),
+      );
+    },
+  );
 
   return app;
 }
