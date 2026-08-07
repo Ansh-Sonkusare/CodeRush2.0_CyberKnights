@@ -38,9 +38,15 @@ export interface OrchestratorAppDeps {
   plan: (goal: string, taskId: string) => Promise<PlanOutcome>;
   ledger: LedgerStore;
   x402: X402Client;
-  router: Router;
-  /** Routeable catalog adapters (built from the provider registry over HTTP). */
-  adapters: ProviderAdapter[];
+  /**
+   * Re-read the routeable catalog from the provider registry before a run so
+   * the fail/recover demo knobs take effect on the next run.
+   */
+  refreshProviders: () => Promise<void>;
+  /** Router resolved at run() time (rebuilt after each refresh). */
+  router: () => Router;
+  /** Routeable catalog adapters resolved at run() time (excludes failed). */
+  adapters: () => ProviderAdapter[];
 }
 
 export interface OrchestratorService {
@@ -78,7 +84,12 @@ export function createOrchestratorApp(deps: OrchestratorAppDeps): OrchestratorSe
   app.post(
     "/orchestrator/run",
     zValidator("json", RunRequestSchema),
-    async (c) => c.json(await runner.run(c.req.valid("json"))),
+    async (c) => {
+      // Re-read the catalog first so provider fail/recover knobs (set via
+      // POST /api/providers/:id/fail) are reflected in this run's routing.
+      await deps.refreshProviders();
+      return c.json(await runner.run(c.req.valid("json")));
+    },
   );
 
   app.post(

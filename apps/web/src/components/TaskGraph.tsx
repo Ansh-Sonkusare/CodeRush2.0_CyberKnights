@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import {
   ReactFlow,
   Background,
@@ -9,69 +9,94 @@ import {
   addEdge,
   BackgroundVariant,
   type Connection,
-  type Node,
   type Edge,
-} from "@xyflow/react";
-import "@xyflow/react/dist/style.css";
-import type { TaskGraph } from "../api-types";
-import type { NodeState } from "../types";
+  type Node,
+} from "reactflow";
+import type { NodeStateWire, TaskGraph } from "@sentinel/schemas";
 import StepNode, { type StepNodeData } from "./StepNode";
 
 const NODE_TYPES = { stepNode: StepNode };
 
 // ─── Layout helpers ──────────────────────────────────────────────────────────
-// Topological sort → assign layer, then spread across x within each layer
+// Topological sort → assign layer, then spread across x within each layer.
 function computeLayout(
   steps: TaskGraph["steps"],
 ): Map<string, { x: number; y: number }> {
   const layer = new Map<string, number>();
 
   function getLayer(id: string): number {
-    if (layer.has(id)) return layer.get(id)!;
-    const step = steps.find((s) => s.id === id)!;
-    const l = step.dependsOn.length === 0
-      ? 0
-      : Math.max(...step.dependsOn.map(getLayer)) + 1;
+    const cached = layer.get(id);
+    if (cached !== undefined) return cached;
+    const step = steps.find((s) => s.id === id);
+    if (step === undefined) {
+      layer.set(id, 0);
+      return 0;
+    }
+    const l =
+      step.dependsOn.length === 0
+        ? 0
+        : Math.max(...step.dependsOn.map(getLayer)) + 1;
     layer.set(id, l);
     return l;
   }
 
   steps.forEach((s) => getLayer(s.id));
 
-  // group by layer
   const byLayer = new Map<number, string[]>();
   for (const [id, l] of layer) {
-    if (!byLayer.has(l)) byLayer.set(l, []);
-    byLayer.get(l)!.push(id);
+    const ids = byLayer.get(l) ?? [];
+    ids.push(id);
+    byLayer.set(l, ids);
   }
 
   const positions = new Map<string, { x: number; y: number }>();
-  const NODE_W = 200;
-  const NODE_H = 160;
-  const GAP_X = 60;
-  const GAP_Y = 80;
+  const NODE_W = 210;
+  const NODE_H = 170;
+  const GAP_X = 70;
+  const GAP_Y = 90;
 
   for (const [l, ids] of byLayer) {
     const total = ids.length;
     ids.forEach((id, i) => {
-      const x = (i - (total - 1) / 2) * (NODE_W + GAP_X);
-      const y = l * (NODE_H + GAP_Y);
-      positions.set(id, { x, y });
+      positions.set(id, {
+        x: (i - (total - 1) / 2) * (NODE_W + GAP_X),
+        y: l * (NODE_H + GAP_Y),
+      });
     });
   }
 
   return positions;
 }
 
+function nodeColor(state: NodeStateWire | undefined): string {
+  switch (state?.kind) {
+    case "settled":
+      return "#22c55e";
+    case "quoted":
+    case "paying":
+    case "paid":
+    case "validating":
+      return "#f59e0b";
+    case "blocked":
+      return "#ef4444";
+    case "failed":
+      return "#7f1d1d";
+    default:
+      return "#334155";
+  }
+}
+
 interface TaskGraphProps {
   graph: TaskGraph;
-  nodeStates: Map<string, NodeState>;
+  nodeStates: Record<string, NodeStateWire>;
 }
 
 export default function TaskGraphView({ graph, nodeStates }: TaskGraphProps) {
   const layout = useMemo(() => computeLayout(graph.steps), [graph]);
 
-  const initialNodes: Node<StepNodeData>[] = useMemo(
+  // Position-only nodes — the state machine data is merged in liveNodes so a
+  // node_state frame doesn't reset drag positions.
+  const baseNodes: Node<StepNodeData>[] = useMemo(
     () =>
       graph.steps.map((step) => ({
         id: step.id,
@@ -80,42 +105,50 @@ export default function TaskGraphView({ graph, nodeStates }: TaskGraphProps) {
         data: {
           label: step.label,
           capability: step.capability,
-          nodeState: nodeStates.get(step.id) ?? { phase: "idle" },
+          nodeState: { kind: "pending" },
         },
       })),
-    [graph, layout, nodeStates],
+    [graph, layout],
   );
 
-  const initialEdges: Edge[] = useMemo(
+  const baseEdges: Edge[] = useMemo(
     () =>
       graph.steps.flatMap((step) =>
         step.dependsOn.map((dep) => ({
           id: `${dep}->${step.id}`,
           source: dep,
           target: step.id,
-          animated: false,
           style: { stroke: "#334155", strokeWidth: 2 },
         })),
       ),
     [graph],
   );
 
-  const [nodes, , onNodesChange] = useNodesState(initialNodes);
-  const [edges, , onEdgesChange] = useEdgesState(initialEdges);
+  const [nodes, setNodes, onNodesChange] = useNodesState<StepNodeData>(baseNodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(baseEdges);
+
+  // Swap in a new graph (new task / replay) without touching user drag state.
+  useEffect(() => {
+    setNodes(baseNodes);
+  }, [baseNodes, setNodes]);
+
+  useEffect(() => {
+    setEdges(baseEdges);
+  }, [baseEdges, setEdges]);
 
   const onConnect = useCallback(
-    (params: Connection) => addEdge(params, edges),
-    [edges],
+    (params: Connection) => setEdges((eds) => addEdge(params, eds)),
+    [setEdges],
   );
 
-  // Sync nodeStates into node data without re-creating layout
+  // Merge live node states into node data.
   const liveNodes = useMemo(
     () =>
       nodes.map((n) => ({
         ...n,
         data: {
           ...n.data,
-          nodeState: nodeStates.get(n.id) ?? { phase: "idle" },
+          nodeState: nodeStates[n.id] ?? { kind: "pending" },
         },
       })),
     [nodes, nodeStates],
@@ -144,17 +177,7 @@ export default function TaskGraphView({ graph, nodeStates }: TaskGraphProps) {
           style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 8 }}
         />
         <MiniMap
-          nodeColor={(n) => {
-            const state = nodeStates.get(n.id);
-            switch (state?.phase) {
-              case "settled":  return "#22c55e";
-              case "running":  return "#f59e0b";
-              case "blocked":  return "#ef4444";
-              case "failed":   return "#7f1d1d";
-              case "queued":   return "#6366f1";
-              default:         return "#1e293b";
-            }
-          }}
+          nodeColor={(n) => nodeColor(nodeStates[n.id])}
           style={{ background: "#0f172a", border: "1px solid #1e293b" }}
           maskColor="rgba(0,0,0,0.4)"
         />
