@@ -44,6 +44,24 @@ export type LedgerOutcome =
   | "declared_failure"
   | "pending_approval";
 
+export type ViolationType =
+  | "budget_mutation"
+  | "scope_expansion"
+  | "prompt_injection"
+  | "receipt_forgery"
+  | "schema_violation";
+
+export type GuardStage = "terms" | "result" | "receipt";
+
+export interface GuardViolation {
+  id: string;
+  type: ViolationType;
+  stage: GuardStage;
+  message: string;
+  rejected_fields: string[];
+  at: string;
+}
+
 export interface LedgerRow {
   ledger_id: string;
   task_id: string;
@@ -54,6 +72,7 @@ export interface LedgerRow {
   route_reason: string;
   stages: Record<LedgerStageName, LedgerStage>;
   outcome: LedgerOutcome;
+  violations?: GuardViolation[];
   created_at: string;
 }
 
