@@ -1,0 +1,221 @@
+[
+  {
+    "provider_id": "mock-search",
+    "capability": "search",
+    "price_micro_algo": "2",
+    "latency_hint_ms": 150,
+    "quality_score": 0.85,
+    "base_url": "http://127.0.0.1:4020/mock/mock-search",
+    "role": "primary",
+    "kind": "mock"
+  },
+  {
+    "provider_id": "mock-search-backup",
+    "capability": "search",
+    "price_micro_algo": "5",
+    "latency_hint_ms": 200,
+    "quality_score": 0.8,
+    "base_url": "http://127.0.0.1:4020/mock/mock-search-backup",
+    "role": "backup",
+    "kind": "mock",
+    "scheme": "upto",
+    "uptoActual": "8",
+    "priceDriftPct": 10
+  },
+  {
+    "provider_id": "mock-extract",
+    "capability": "extract",
+    "price_micro_algo": "3",
+    "latency_hint_ms": 120,
+    "quality_score": 0.9,
+    "base_url": "http://127.0.0.1:4020/mock/mock-extract",
+    "role": "primary",
+    "kind": "mock",
+    "scheme": "exact"
+  },
+  {
+    "provider_id": "mock-extract-backup",
+    "capability": "extract",
+    "price_micro_algo": "4",
+    "latency_hint_ms": 180,
+    "quality_score": 0.85,
+    "base_url": "http://127.0.0.1:4020/mock/mock-extract-backup",
+    "role": "backup",
+    "kind": "mock"
+  },
+  {
+    "provider_id": "mock-translate",
+    "capability": "translate",
+    "price_micro_algo": "3",
+    "latency_hint_ms": 130,
+    "quality_score": 0.9,
+    "base_url": "http://127.0.0.1:4020/mock/mock-translate",
+    "role": "primary",
+    "kind": "mock",
+    "scheme": "exact"
+  },
+  {
+    "provider_id": "mock-translate-backup",
+    "capability": "translate",
+    "price_micro_algo": "5",
+    "latency_hint_ms": 220,
+    "quality_score": 0.82,
+    "base_url": "http://127.0.0.1:4020/mock/mock-translate-backup",
+    "role": "backup",
+    "kind": "mock"
+  },
+  {
+    "provider_id": "mock-rank",
+    "capability": "rank",
+    "price_micro_algo": "4",
+    "latency_hint_ms": 150,
+    "quality_score": 0.88,
+    "base_url": "http://127.0.0.1:4020/mock/mock-rank",
+    "role": "primary",
+    "kind": "mock",
+    "scheme": "exact"
+  },
+  {
+    "provider_id": "mock-rank-backup",
+    "capability": "rank",
+    "price_micro_algo": "6",
+    "latency_hint_ms": 250,
+    "quality_score": 0.8,
+    "base_url": "http://127.0.0.1:4020/mock/mock-rank-backup",
+    "role": "backup",
+    "kind": "mock"
+  },
+  {
+    "provider_id": "mock-verify",
+    "capability": "verify",
+    "price_micro_algo": "2",
+    "latency_hint_ms": 100,
+    "quality_score": 0.92,
+    "base_url": "http://127.0.0.1:4020/mock/mock-verify",
+    "role": "primary",
+    "kind": "mock",
+    "scheme": "exact"
+  },
+  {
+    "provider_id": "mock-verify-backup",
+    "capability": "verify",
+    "price_micro_algo": "4",
+    "latency_hint_ms": 160,
+    "quality_score": 0.86,
+    "base_url": "http://127.0.0.1:4020/mock/mock-verify-backup",
+    "role": "backup",
+    "kind": "mock"
+  },
+  {
+    "provider_id": "mock-wallet-data",
+    "capability": "fetch_wallet_data",
+    "price_micro_algo": "4",
+    "latency_hint_ms": 120,
+    "quality_score": 0.9,
+    "base_url": "http://127.0.0.1:4020/mock/mock-wallet-data",
+    "role": "primary",
+    "kind": "mock"
+  },
+  {
+    "provider_id": "mock-wallet-data-backup",
+    "capability": "fetch_wallet_data",
+    "price_micro_algo": "6",
+    "latency_hint_ms": 200,
+    "quality_score": 0.85,
+    "base_url": "http://127.0.0.1:4020/mock/mock-wallet-data-backup",
+    "role": "backup",
+    "kind": "mock"
+  },
+  {
+    "provider_id": "mock-summary",
+    "capability": "generate_summary",
+    "price_micro_algo": "3",
+    "latency_hint_ms": 220,
+    "quality_score": 0.88,
+    "base_url": "http://127.0.0.1:4020/mock/mock-summary",
+    "role": "primary",
+    "kind": "mock"
+  },
+  {
+    "provider_id": "mock-summary-backup",
+    "capability": "generate_summary",
+    "price_micro_algo": "5",
+    "latency_hint_ms": 300,
+    "quality_score": 0.84,
+    "base_url": "http://127.0.0.1:4020/mock/mock-summary-backup",
+    "role": "backup",
+    "kind": "mock"
+  },
+  {
+    "provider_id": "mock-credit-score",
+    "capability": "score_credit",
+    "price_micro_algo": "3",
+    "latency_hint_ms": 180,
+    "quality_score": 0.85,
+    "base_url": "http://127.0.0.1:4020/mock/mock-credit-score",
+    "role": "primary",
+    "kind": "mock"
+  },
+  {
+    "provider_id": "mock-credit-score-backup",
+    "capability": "score_credit",
+    "price_micro_algo": "5",
+    "latency_hint_ms": 250,
+    "quality_score": 0.82,
+    "base_url": "http://127.0.0.1:4020/mock/mock-credit-score-backup",
+    "role": "backup",
+    "kind": "mock"
+  },
+  {
+    "provider_id": "mock-wallet-data-adversarial",
+    "capability": "fetch_wallet_data",
+    "price_micro_algo": "4",
+    "latency_hint_ms": 120,
+    "quality_score": 0.9,
+    "base_url": "http://127.0.0.1:4020/mock/mock-wallet-data-adversarial",
+    "role": "backup",
+    "kind": "adversarial",
+    "mode": "budget_mutation"
+  },
+  {
+    "provider_id": "mock-summary-adversarial",
+    "capability": "generate_summary",
+    "price_micro_algo": "3",
+    "latency_hint_ms": 220,
+    "quality_score": 0.88,
+    "base_url": "http://127.0.0.1:4020/mock/mock-summary-adversarial",
+    "role": "backup",
+    "kind": "adversarial",
+    "mode": "scope_expansion"
+  },
+  {
+    "provider_id": "zerion",
+    "capability": "fetch_wallet_data",
+    "price_micro_algo": "3",
+    "latency_hint_ms": 300,
+    "quality_score": 0.95,
+    "base_url": "http://127.0.0.1:4020/mock/zerion",
+    "role": "primary",
+    "kind": "zerion"
+  },
+  {
+    "provider_id": "llm-summary",
+    "capability": "generate_summary",
+    "price_micro_algo": "1",
+    "latency_hint_ms": 400,
+    "quality_score": 0.94,
+    "base_url": "http://127.0.0.1:4020/mock/llm-summary",
+    "role": "primary",
+    "kind": "llm-summary"
+  },
+  {
+    "provider_id": "llm-credit",
+    "capability": "score_credit",
+    "price_micro_algo": "2",
+    "latency_hint_ms": 350,
+    "quality_score": 0.93,
+    "base_url": "http://127.0.0.1:4020/mock/llm-credit",
+    "role": "primary",
+    "kind": "llm-credit"
+  }
+]
