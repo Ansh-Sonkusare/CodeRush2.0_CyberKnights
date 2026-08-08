@@ -16,7 +16,9 @@ const config = loadConfig();
 
 const registry = createInMemoryRegistry();
 registry.register(
-  new ZerionWalletDataProvider({ baseUrl: undefined, apiKey: config.zerionApiKey }),
+  new ZerionWalletDataProvider({
+    ...(config.zerionApiKey !== undefined ? { apiKey: config.zerionApiKey } : {}),
+  }),
 );
 registry.register(
   new LLMSummaryProvider({
