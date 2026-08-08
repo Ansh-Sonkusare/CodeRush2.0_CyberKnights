@@ -16,3 +16,4 @@
  */
 
 export * from "./remote.js";
+export * from "./x402.js";

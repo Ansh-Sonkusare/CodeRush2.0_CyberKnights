@@ -39,6 +39,7 @@ export class RemoteProviderAdapter implements ProviderAdapter {
   readonly qualityScore: number;
   readonly baseUrl: string;
   readonly role: "primary" | "backup";
+  readonly integration: "mock";
 
   constructor(entry: ProviderCatalogEntry) {
     this.providerId = entry.provider_id;
@@ -48,6 +49,10 @@ export class RemoteProviderAdapter implements ProviderAdapter {
     this.qualityScore = entry.quality_score;
     this.baseUrl = entry.base_url;
     this.role = entry.role ?? "primary";
+    // A RemoteProviderAdapter proxies a /quote+/deliver+/health server — the
+    // classic (non-x402) wire contract. Real x402 providers get their own
+    // adapter class (X402ProviderAdapter) so routing stays type-honest.
+    this.integration = "mock";
   }
 
   async quote(goal: string): Promise<Result<QuoteResponse, ProviderError>> {
@@ -127,6 +132,7 @@ export function toWire(adapter: ProviderAdapter): ProviderCatalogEntryWire {
     quality_score: adapter.qualityScore,
     base_url: adapter.baseUrl,
     role: adapter.role,
+    integration: adapter.integration,
   };
 }
 
@@ -145,5 +151,6 @@ export function fromWire(wire: ProviderCatalogEntryWire): ProviderCatalogEntry {
     quality_score: checked.data.quality_score,
     base_url: checked.data.base_url,
     role: checked.data.role,
+    integration: checked.data.integration,
   };
 }

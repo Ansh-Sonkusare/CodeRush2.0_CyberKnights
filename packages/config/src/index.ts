@@ -26,6 +26,9 @@ export type Network = z.infer<typeof NetworkSchema>;
 export const LLMProviderSchema = z.enum(["gemini", "openai-compatible", "ollama"]);
 export type LLMProvider = z.infer<typeof LLMProviderSchema>;
 
+export const X402ModeSchema = z.enum(["simulated", "algorand"]);
+export type X402Mode = z.infer<typeof X402ModeSchema>;
+
 const PORT_SCHEMA = z.coerce.number().int().min(1).max(65535);
 
 // ─── CSV "name=port,name=port" parser ─────────────────────────────────────────
@@ -104,6 +107,12 @@ export const AppConfigSchema = z
       .strict(),
     llm: LLM_CONFIG_SCHEMA,
     zerionApiKey: z.string().optional(),
+    // Payment layer mode: "simulated" (in-memory, no funds — the safe default)
+    // or "algorand" (real TestNet payments via the GoPlausible facilitator).
+    x402Mode: X402ModeSchema.default("simulated"),
+    // TestNet mnemonic for the Algorand signer. NEVER logged; only read by
+    // @sentinel/x402-client when x402Mode === "algorand".
+    algoMnemonic: z.string().optional(),
     // SQLite file path for the in-process ledger store (shared by the gateway
     // and the orchestrator). Parent directory is created at boot.
     ledgerPath: z.string().default(".data/ledger.db"),
@@ -152,6 +161,8 @@ const ENV_VAR_BY_PATH: Readonly<Record<string, string>> = {
   "llm.geminiModel": "GEMINI_MODEL",
   "llm.openaiModel": "OPENAI_MODEL",
   zerionApiKey: "ZERION_API_KEY",
+  x402Mode: "X402_MODE",
+  algoMnemonic: "ALGO_MNEMONIC",
   ledgerPath: "LEDGER_PATH",
   mockProviders: "MOCK_PROVIDER_PORTS",
   adversarialProviders: "ADVERSARIAL_PROVIDER_PORTS",
@@ -183,6 +194,8 @@ function rawFromEnv(env: Readonly<Record<string, string | undefined>>): Record<s
       openaiModel: env.OPENAI_MODEL,
     },
     zerionApiKey: env.ZERION_API_KEY,
+    x402Mode: env.X402_MODE,
+    algoMnemonic: env.ALGO_MNEMONIC,
     ledgerPath: env.LEDGER_PATH,
     mockProviders: env.MOCK_PROVIDER_PORTS,
     adversarialProviders: env.ADVERSARIAL_PROVIDER_PORTS,

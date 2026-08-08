@@ -253,13 +253,20 @@ export function useWs() {
   /** Start following a task id (clears previous state). */
   const watch = useCallback((id: string) => {
     setWatchId(id);
-    setState({ ...DEFAULT_STATE, taskId: id, status: "planning" });
+    setState((prev) => ({
+      ...DEFAULT_STATE,
+      taskId: id,
+      status: "planning",
+      // Keep the live socket state — onopen only fires once, so a fresh task
+      // must not flip the header to "ws reconnecting…" nor gray the Run button.
+      connected: prev.connected,
+    }));
   }, []);
 
   /** Stop following; back to the idle screen. */
   const clear = useCallback(() => {
     setWatchId(null);
-    setState(DEFAULT_STATE);
+    setState((prev) => ({ ...DEFAULT_STATE, connected: prev.connected }));
   }, []);
 
   /**

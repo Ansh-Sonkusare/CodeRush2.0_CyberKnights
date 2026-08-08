@@ -39,6 +39,7 @@ export const NodeStateSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("paid"),
     txRef: z.string(),
+    simulated: z.boolean(),
     providerId: z.string(),
   }).strict(),
 
@@ -50,6 +51,7 @@ export const NodeStateSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("settled"),
     txRef: z.string(),
+    simulated: z.boolean(),
     ledgerId: z.string(),
     providerId: z.string(),
   }).strict(),
@@ -146,6 +148,7 @@ export const NodeStateWireSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("paid"),
     txRef: z.string(),
+    simulated: z.boolean(),
     providerId: z.string(),
   }).strict(),
 
@@ -157,6 +160,7 @@ export const NodeStateWireSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("settled"),
     txRef: z.string(),
+    simulated: z.boolean(),
     ledgerId: z.string(),
     providerId: z.string(),
   }).strict(),

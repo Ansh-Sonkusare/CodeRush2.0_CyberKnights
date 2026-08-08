@@ -32,12 +32,12 @@ const KIND_LABELS: Record<NodeStateWire["kind"], string> = {
   failed: "failed ✗",
 };
 
-/** Show tx ref for paid/settled (shortened). */
-function txRefFor(state: NodeStateWire): string | null {
+/** Show tx ref for paid/settled (shortened), null when not yet paid. */
+function txRefFor(state: NodeStateWire): { ref: string; simulated: boolean } | null {
   switch (state.kind) {
     case "paid":
     case "settled":
-      return state.txRef;
+      return { ref: state.txRef, simulated: state.simulated };
     default:
       return null;
   }
@@ -64,7 +64,7 @@ function StepNode({ data }: NodeProps) {
   const { label, capability, nodeState } = d;
   const capColor = CAPABILITY_COLORS[capability] ?? "#64748b";
   const provider = providerFor(nodeState);
-  const txRef = txRefFor(nodeState);
+  const tx = txRefFor(nodeState);
 
   return (
     <div className={`step-node node-${nodeState.kind}`}>
@@ -93,11 +93,23 @@ function StepNode({ data }: NodeProps) {
         </div>
       )}
 
-      {txRef !== null && (
-        <div className="tx-ref" title={txRef}>
-          {txRef.slice(0, 14)}…
-        </div>
-      )}
+      {tx !== null &&
+        (tx.simulated ? (
+          <div className="tx-ref tx-sim" title={`${tx.ref} — simulated, not on-chain`}>
+            <span className="tx-sim-badge">sim</span>
+            {tx.ref.slice(0, 14)}…
+          </div>
+        ) : (
+          <a
+            className="tx-ref tx-real"
+            href={`https://testnet.explorer.algorand.org/tx/${tx.ref}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={tx.ref}
+          >
+            {tx.ref.slice(0, 14)}…
+          </a>
+        ))}
 
       {nodeState.kind === "blocked" && (
         <div className="violation-badge" title={nodeState.violation.message}>

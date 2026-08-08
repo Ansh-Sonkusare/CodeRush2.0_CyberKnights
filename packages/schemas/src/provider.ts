@@ -4,6 +4,16 @@ import { CapabilitySchema } from "./capability.js";
 import type { MicroAlgo } from "./branded.js";
 import type { Result } from "./result.js";
 
+// ─── Provider integration marker ──────────────────────────────────────────────
+// "mock" = an in-process/remote provider speaking the plain /quote + /deliver +
+// /health wire contract. "x402" = a real x402 resource server whose base_url is
+// a pay-per-request resource (the orchestrator pays it via the x402 client and
+// reads the paid content back through the same client). The marker lets the
+// orchestrator build the right adapter class from a catalog entry.
+
+export const ProviderIntegrationSchema = z.enum(["mock", "x402"]);
+export type ProviderIntegration = z.infer<typeof ProviderIntegrationSchema>;
+
 // ─── Provider catalog entry (metadata only, no HTTP) ─────────────────────────
 
 export const ProviderCatalogEntrySchema = z
@@ -15,6 +25,7 @@ export const ProviderCatalogEntrySchema = z
     quality_score: z.number().min(0).max(1),
     base_url: z.string().url(),
     role: z.enum(["primary", "backup"]).optional(),
+    integration: ProviderIntegrationSchema.default("mock"),
   })
   .strict();
 
@@ -34,6 +45,7 @@ export const ProviderCatalogEntryWireSchema = z
     quality_score: z.number().min(0).max(1),
     base_url: z.string().url(),
     role: z.enum(["primary", "backup"]).optional(),
+    integration: ProviderIntegrationSchema.default("mock"),
     // Registry-local demo knob: whether this provider is currently marked
     // failed (excluded from routing). Absent on entries that can't report it.
     failed: z.boolean().optional(),
@@ -141,6 +153,8 @@ export interface ProviderAdapter {
   readonly qualityScore: number;
   readonly baseUrl: string;
   readonly role: "primary" | "backup";
+  /** "mock" = /quote+/deliver wire contract; "x402" = pay-per-request resource. */
+  readonly integration: ProviderIntegration;
 
   /** Step 1: get invoice + terms (the 402 challenge). */
   quote(goal: string): Promise<Result<QuoteResponse, ProviderError>>;

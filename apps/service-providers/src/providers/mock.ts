@@ -105,6 +105,7 @@ export class MockProvider implements ProviderAdapter {
   readonly qualityScore: number;
   readonly baseUrl: string;
   readonly role: "primary";
+  readonly integration: "mock" = "mock";
   private readonly spec: MockProviderSpec;
   private _failed = false;
 

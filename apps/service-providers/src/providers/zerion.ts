@@ -39,6 +39,7 @@ export class ZerionWalletDataProvider implements ProviderAdapter {
   readonly qualityScore = 0.95;
   readonly baseUrl: string;
   readonly role: "primary" = "primary";
+  readonly integration: "mock" = "mock";
   private readonly apiKey: string | undefined;
 
   constructor(config: ZerionAdapterConfig) {

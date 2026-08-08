@@ -13,9 +13,12 @@
   "dependencies": {
     "@hono/node-server": "^1.13.0",
     "@hono/zod-validator": "^0.9.0",
-    "@sentinel/schemas": "workspace:*",
     "@sentinel/config": "workspace:*",
     "@sentinel/providers": "workspace:*",
+    "@sentinel/schemas": "workspace:*",
+    "@x402/avm": "2.21.0",
+    "@x402/core": "2.21.0",
+    "@x402/hono": "2.21.0",
     "hono": "^4.11.2",
     "zod": "^4.4.3"
   },

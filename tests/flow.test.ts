@@ -16,7 +16,7 @@ import {
 import { createLedgerStore, type LedgerStore } from "@sentinel/ledger";
 import { createRouter } from "@sentinel/router";
 import { createTaskRunner, type TaskRunner } from "@sentinel/orchestrator";
-import { SimulatedX402Client } from "@sentinel/x402-client";
+import { createX402Client, SimulatedX402Client } from "@sentinel/x402-client";
 import { Treasury } from "@sentinel/treasury";
 
 // ─── End-to-end flow ──────────────────────────────────────────────────────────
@@ -346,8 +346,8 @@ describe("SimulatedX402Client — no double settlement", () => {
     const client = new SimulatedX402Client();
     client.issueCapability(cap);
 
-    const first = client.pay(cap, invoice);
-    const second = client.pay(cap, invoice);
+    const first = await client.pay(cap, invoice, "http://provider.local");
+    const second = await client.pay(cap, invoice, "http://provider.local");
     expect(first.ok).toBe(true);
     expect(second.ok).toBe(true);
     if (first.ok && second.ok) {
@@ -359,5 +359,16 @@ describe("SimulatedX402Client — no double settlement", () => {
     expect(treasury.issueCapability("n-wallet" as never, "mock-wallet", microAlgo(500n)).maxAmount).toBe(
       microAlgo(500n),
     );
+  });
+});
+
+describe("createX402Client factory", () => {
+  it("returns a SimulatedX402Client in simulated mode", () => {
+    const client = createX402Client({ mode: "simulated" });
+    expect(client).toBeInstanceOf(SimulatedX402Client);
+  });
+
+  it("refuses algorand mode without a mnemonic", () => {
+    expect(() => createX402Client({ mode: "algorand" })).toThrow(/TestNet mnemonic/);
   });
 });

@@ -345,6 +345,15 @@ select:focus {
   padding: 0 5px;
 }
 
+.x402-tag {
+  font-size: 10px;
+  color: var(--amber);
+  border: 1px solid var(--amber);
+  border-radius: 4px;
+  padding: 0 5px;
+  margin-left: 6px;
+}
+
 .provider-sub {
   font-size: 10px;
   color: var(--muted);
@@ -510,6 +519,28 @@ select:focus {
   margin-top: 3px;
   font-size: 9px;
   color: var(--green);
+  text-decoration: none;
+}
+
+.tx-ref.tx-real:hover {
+  text-decoration: underline;
+  color: #7ee2b8;
+}
+
+.tx-ref.tx-sim {
+  color: var(--muted, #94a3b8);
+}
+
+.tx-sim-badge {
+  display: inline-block;
+  margin-right: 3px;
+  background: rgba(148, 163, 184, 0.2);
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  border-radius: 3px;
+  font-size: 8px;
+  font-weight: 700;
+  padding: 0 3px;
+  text-transform: uppercase;
 }
 
 .violation-badge {

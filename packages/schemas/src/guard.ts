@@ -46,6 +46,9 @@ export const PaymentReceiptSchema = z
   .object({
     idempotencyKey: z.string(),
     txRef: z.string(),
+    // true = in-memory SimulatedX402Client (txRef is `sim-…`, not on-chain);
+    // false = real Algorand settlement (txRef is an on-chain transaction id).
+    simulated: z.boolean(),
     amount: z.bigint(),              // MicroAlgo
     providerId: z.string(),
     taskId: z.string(),

@@ -41,6 +41,7 @@ abstract class LLMProviderPlaceholder implements ProviderAdapter {
   abstract readonly qualityScore: number;
   readonly baseUrl: string;
   readonly role: "primary" = "primary";
+  readonly integration: "mock" = "mock";
   protected readonly apiKey: string | undefined;
   protected readonly model: string | undefined;
 

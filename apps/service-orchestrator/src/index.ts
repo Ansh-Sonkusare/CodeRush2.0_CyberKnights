@@ -4,9 +4,13 @@ import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { loadConfig } from "@sentinel/config";
 import { createLedgerStore } from "@sentinel/ledger";
-import { SimulatedX402Client } from "@sentinel/x402-client";
+import { createX402Client } from "@sentinel/x402-client";
 import { createRouter, type Router } from "@sentinel/router";
-import { RemoteProviderAdapter, fromWire } from "@sentinel/providers";
+import {
+  RemoteProviderAdapter,
+  X402ProviderAdapter,
+  fromWire,
+} from "@sentinel/providers";
 import {
   PlanOutcomeSchema,
   type PlanOutcome,
@@ -40,6 +44,15 @@ async function main(): Promise<void> {
     return parsed.data;
   };
 
+  // Payment layer: simulated (no funds, the safe default) unless the operator
+  // sets X402_MODE=algorand with a TestNet ALGO_MNEMONIC. The signer stays
+  // inside @sentinel/x402-client — nothing else sees the mnemonic. Created
+  // before refreshProviders because x402 catalog entries are built around it.
+  const x402 = createX402Client({
+    mode: config.x402Mode,
+    ...(config.algoMnemonic ? { mnemonic: config.algoMnemonic } : {}),
+  });
+
   // Routeable catalog, rebuilt from the provider registry on every run.
   // A provider catalog entry is untrusted wire input — fromWire validates it.
   // Entries marked `failed` (the registry's demo fail/recover knob) are
@@ -61,7 +74,14 @@ async function main(): Promise<void> {
         // remotes). The node machine's retry/fallback path handles the failure.
         // Only skip entries that can't be parsed as valid catalog entries.
         try {
-          next.push(new RemoteProviderAdapter(fromWire(entry)));
+          // integration === "x402" → a real x402 resource server: pay + fetch
+          // via the x402 client (which caches the paid body), not the plain
+          // /quote + /deliver wire contract.
+          if (entry.integration === "x402") {
+            next.push(new X402ProviderAdapter(fromWire(entry), x402));
+          } else {
+            next.push(new RemoteProviderAdapter(fromWire(entry)));
+          }
         } catch {
           // skip invalid catalog entries — the registry is external input
         }
@@ -82,8 +102,6 @@ async function main(): Promise<void> {
   if (currentAdapters.length === 0) {
     console.warn("[orchestrator] no providers loaded — runs will fail to route");
   }
-
-  const x402 = new SimulatedX402Client();
 
   const { app } = createOrchestratorApp({
     plan,

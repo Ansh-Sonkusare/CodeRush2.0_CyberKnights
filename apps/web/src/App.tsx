@@ -32,6 +32,55 @@ const ATTACK_SCENARIOS = [
 
 type AttackValue = (typeof ATTACK_SCENARIOS)[number]["value"];
 
+/**
+ * One-click demo flows. Each flow pre-configures the run inputs and the
+ * provider fail/recover state so a presenter can drive a specific behavior of
+ * the pipeline without touching the manual controls. All flows reset the
+ * registry first (recover every provider), then apply their own failures.
+ */
+interface DemoFlow {
+  id: string;
+  label: string;
+  description: string;
+  /** What to watch for during/after the run. */
+  watch: string;
+  goal?: string;
+  cap?: string;
+  attackNode?: RunRequest["attackNode"];
+  /** Provider ids to mark failed before the run (others are recovered). */
+  failProviders?: string[];
+}
+
+const DEMO_FLOWS: DemoFlow[] = [
+  {
+    id: "happy",
+    label: "Happy path",
+    description: "All providers healthy — the planner, router, treasury, and guard complete the full graph.",
+    watch: "n-wallet, n-summary, n-credit → settled",
+  },
+  {
+    id: "guard-block",
+    label: "Guard blocks an attack",
+    description: "An adversarial provider is forced onto n-wallet and tries to smuggle a budget field back.",
+    watch: "n-wallet → blocked · budget_mutation violation",
+    attackNode: { nodeId: "n-wallet", providerId: "mock-wallet-data-adversarial" },
+  },
+  {
+    id: "budget-pause",
+    label: "Treasury pause",
+    description: "A tight cap means the last reservation would overspend — the task pauses for approval.",
+    watch: "task → paused · Approve or Reject the overspend",
+    cap: "8",
+  },
+  {
+    id: "outage",
+    label: "Provider outage",
+    description: "Every fetch_wallet_data provider is down — that node fails while the rest of the graph settles.",
+    watch: "n-wallet → failed · fallback exhausts",
+    failProviders: ["mock-wallet-data", "mock-wallet-data-adversarial"],
+  },
+];
+
 function timeOf(iso: string): string {
   return new Date(iso).toLocaleTimeString();
 }
@@ -298,6 +347,11 @@ export default function App() {
                 <div className="provider-main">
                   <span className="provider-id">{p.provider_id}</span>
                   <span className="provider-cap">{p.capability}</span>
+                  {p.integration === "x402" && (
+                    <span className="x402-tag" title="Real x402 resource server — settlement is a real TestNet transaction">
+                      x402
+                    </span>
+                  )}
                 </div>
                 <div className="provider-sub">
                   {formatMicroAlgo(p.price_micro_algo)} · q{p.quality_score.toFixed(2)} · {p.role}

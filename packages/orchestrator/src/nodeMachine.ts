@@ -87,6 +87,7 @@ interface NodeContext {
   ledgerId: string | undefined;
   idempotencyKeyValue: string | undefined;
   txRef: string | undefined;
+  simulated: boolean | undefined;
   violation: PolicyViolation | undefined;
   result: Record<string, unknown> | undefined;
   error: string | undefined;
@@ -198,6 +199,8 @@ export interface PayInput {
   idempotencyKeyValue: string;
   quote: QuoteResponse;
   amount: MicroAlgo;
+  /** Where to actually perform the payment against (the x402 resource server). */
+  providerUrl: string;
   deps: OrchestratorDeps;
 }
 
@@ -206,7 +209,7 @@ export type PayOutput =
   | { kind: "retry"; providerId: string; reason: string };
 
 async function payInvoice({ input }: { input: PayInput }): Promise<PayOutput> {
-  const { nodeId, capability, ledgerId, idempotencyKeyValue, quote, amount, deps } = input;
+  const { nodeId, capability, ledgerId, idempotencyKeyValue, quote, amount, providerUrl, deps } = input;
 
   const invoice: Invoice = {
     invoice_id: quote.invoice_id,
@@ -230,7 +233,7 @@ async function payInvoice({ input }: { input: PayInput }): Promise<PayOutput> {
     }),
   );
 
-  const payRes = deps.x402.pay(cap, invoice);
+  const payRes = await deps.x402.pay(cap, invoice, providerUrl);
   if (!payRes.ok) {
     deps.treasury.release(taskNodeId(nodeId));
     await deps.ledger.setOutcome(ledgerId, "declared_failure");
@@ -368,6 +371,7 @@ export const nodeMachine = setup({
     ledgerId: undefined,
     idempotencyKeyValue: undefined,
     txRef: undefined,
+    simulated: undefined,
     violation: undefined,
     result: undefined,
     error: undefined,
@@ -521,6 +525,7 @@ export const nodeMachine = setup({
           idempotencyKeyValue: context.idempotencyKeyValue as string,
           quote: context.quote as QuoteResponse,
           amount: context.amount,
+          providerUrl: context.decision.adapter.baseUrl,
           deps: context.deps,
         }),
         onDone: [
@@ -530,7 +535,7 @@ export const nodeMachine = setup({
             actions: [
               assign(({ event }) => {
                 if (event.output.kind !== "ok") return {};
-                return { txRef: event.output.receipt.txRef };
+                return { txRef: event.output.receipt.txRef, simulated: event.output.receipt.simulated };
               }),
               ({ context, event }) => {
                 if (event.output.kind !== "ok") return;
@@ -539,6 +544,7 @@ export const nodeMachine = setup({
                   state: {
                     kind: "paid",
                     txRef: event.output.receipt.txRef,
+                    simulated: event.output.receipt.simulated,
                     providerId: event.output.receipt.providerId,
                   },
                 });
@@ -619,6 +625,7 @@ export const nodeMachine = setup({
                   state: {
                     kind: "settled",
                     txRef: context.txRef as string,
+                    simulated: context.simulated as boolean,
                     ledgerId: context.ledgerId as string,
                     providerId: context.decision.adapter.providerId,
                   },

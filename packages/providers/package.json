@@ -18,7 +18,8 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@sentinel/schemas": "workspace:*"
+    "@sentinel/schemas": "workspace:*",
+    "@sentinel/x402-client": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
