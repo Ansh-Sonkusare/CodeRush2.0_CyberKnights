@@ -3,4 +3,4 @@ dist/
 data/
 .data/
 *.log
-.env.local
+.env.*
