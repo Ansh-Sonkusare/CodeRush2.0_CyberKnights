@@ -232,6 +232,20 @@ export function createLedgerStore(dbPath: string): LedgerStore {
     return ready;
   }
 
+  // Serialize writes. The MVD parallel pipeline runs node actors concurrently,
+  // and concurrent writes to one SQLite file race (SQLITE_BUSY: database is
+  // locked). Every mutating method runs through a single FIFO queue so the
+  // store stays safe for parallel callers — reads stay lock-free.
+  let writeTail: Promise<unknown> = Promise.resolve();
+  function withWriteLock<T>(op: () => Promise<T>): Promise<T> {
+    const run = writeTail.then(op, op);
+    writeTail = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  }
+
   function parseRow(raw: string): LedgerRow {
     const parsed = LedgerRowSchema.safeParse(JSON.parse(raw));
     if (!parsed.success) {
@@ -270,34 +284,36 @@ export function createLedgerStore(dbPath: string): LedgerStore {
 
   return {
     async insert(input: CreateLedgerRowRequest): Promise<LedgerRow> {
-      await ensureReady();
-      const checkedInput = CreateLedgerRowRequestSchema.safeParse(input);
-      if (!checkedInput.success) {
-        const detail = checkedInput.error.issues.map((i) => i.message).join("; ");
-        throw new Error(`invalid ledger create request: ${detail}`);
-      }
-      const tx = await client.transaction("write");
-      try {
-        const maxRs = await tx.execute("SELECT COALESCE(MAX(seq), 0) + 1 AS next_seq FROM ledger_rows");
-        const rawSeq = maxRs.rows[0]?.["next_seq"];
-        if (rawSeq === undefined || rawSeq === null) {
-          throw new Error("could not allocate ledger id");
+      return withWriteLock(async () => {
+        await ensureReady();
+        const checkedInput = CreateLedgerRowRequestSchema.safeParse(input);
+        if (!checkedInput.success) {
+          const detail = checkedInput.error.issues.map((i) => i.message).join("; ");
+          throw new Error(`invalid ledger create request: ${detail}`);
         }
-        const row = createLedgerRow({ ...checkedInput.data, ledger_id: `l-${rawSeq}` });
-        const checkedRow = LedgerRowSchema.safeParse(row);
-        if (!checkedRow.success) {
-          throw new Error("constructed ledger row failed to serialize");
+        const tx = await client.transaction("write");
+        try {
+          const maxRs = await tx.execute("SELECT COALESCE(MAX(seq), 0) + 1 AS next_seq FROM ledger_rows");
+          const rawSeq = maxRs.rows[0]?.["next_seq"];
+          if (rawSeq === undefined || rawSeq === null) {
+            throw new Error("could not allocate ledger id");
+          }
+          const row = createLedgerRow({ ...checkedInput.data, ledger_id: `l-${rawSeq}` });
+          const checkedRow = LedgerRowSchema.safeParse(row);
+          if (!checkedRow.success) {
+            throw new Error("constructed ledger row failed to serialize");
+          }
+          await tx.execute({
+            sql: "INSERT INTO ledger_rows (ledger_id, task_id, node_id, row_json) VALUES (?, ?, ?, ?)",
+            args: [checkedRow.data.ledger_id, checkedInput.data.task_id, checkedInput.data.node_id, JSON.stringify(checkedRow.data)],
+          });
+          await tx.commit();
+          return checkedRow.data;
+        } catch (err) {
+          await tx.rollback().catch(() => undefined);
+          throw err;
         }
-        await tx.execute({
-          sql: "INSERT INTO ledger_rows (ledger_id, task_id, node_id, row_json) VALUES (?, ?, ?, ?)",
-          args: [checkedRow.data.ledger_id, checkedInput.data.task_id, checkedInput.data.node_id, JSON.stringify(checkedRow.data)],
-        });
-        await tx.commit();
-        return checkedRow.data;
-      } catch (err) {
-        await tx.rollback().catch(() => undefined);
-        throw err;
-      }
+      });
     },
 
     async get(ledgerId: string): Promise<LedgerRow | undefined> {
@@ -305,27 +321,33 @@ export function createLedgerStore(dbPath: string): LedgerStore {
     },
 
     async updateStage(ledgerId: string, stage: LedgerStage): Promise<LedgerRow | undefined> {
-      const row = await readRow(ledgerId);
-      if (!row) return undefined;
-      row.stages[stage.name] = stage;
-      await writeRow(row);
-      return row;
+      return withWriteLock(async () => {
+        const row = await readRow(ledgerId);
+        if (!row) return undefined;
+        row.stages[stage.name] = stage;
+        await writeRow(row);
+        return row;
+      });
     },
 
     async setOutcome(ledgerId: string, outcome: LedgerOutcome): Promise<LedgerRow | undefined> {
-      const row = await readRow(ledgerId);
-      if (!row) return undefined;
-      row.outcome = outcome;
-      await writeRow(row);
-      return row;
+      return withWriteLock(async () => {
+        const row = await readRow(ledgerId);
+        if (!row) return undefined;
+        row.outcome = outcome;
+        await writeRow(row);
+        return row;
+      });
     },
 
     async appendViolation(ledgerId: string, violation: PolicyViolation): Promise<LedgerRow | undefined> {
-      const row = await readRow(ledgerId);
-      if (!row) return undefined;
-      row.violations = [...(row.violations ?? []), violation];
-      await writeRow(row);
-      return row;
+      return withWriteLock(async () => {
+        const row = await readRow(ledgerId);
+        if (!row) return undefined;
+        row.violations = [...(row.violations ?? []), violation];
+        await writeRow(row);
+        return row;
+      });
     },
 
     async findByTaskId(taskId: string): Promise<LedgerRow[]> {

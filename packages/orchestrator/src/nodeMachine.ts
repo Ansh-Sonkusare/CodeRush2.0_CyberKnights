@@ -202,14 +202,70 @@ export interface PayInput {
   /** Where to actually perform the payment against (the x402 resource server). */
   providerUrl: string;
   deps: OrchestratorDeps;
+  /** The routed adapter — its scheme/uptoActual/failMode metadata shape the payment. */
+  adapter: RouteDecision["adapter"];
 }
 
 export type PayOutput =
   | { kind: "ok"; receipt: PaymentReceipt }
   | { kind: "retry"; providerId: string; reason: string };
 
+/** A quote whose terms have already expired is never paid — exclude + re-route. */
+function isStaleQuote(quote: QuoteResponse, now: number = Date.now()): boolean {
+  const expires = new Date(quote.terms_expires_at).getTime();
+  return Number.isFinite(expires) && expires <= now;
+}
+
+/** True when the quoted price exceeds the advertised hint by more than 25%. */
+function isPriceDrift(amount: MicroAlgo, hint: MicroAlgo): boolean {
+  return hint > 0n && amount > (hint * 125n) / 100n;
+}
+
 async function payInvoice({ input }: { input: PayInput }): Promise<PayOutput> {
-  const { nodeId, capability, ledgerId, idempotencyKeyValue, quote, amount, providerUrl, deps } = input;
+  const { nodeId, capability, ledgerId, idempotencyKeyValue, quote, amount, providerUrl, deps, adapter } = input;
+
+  // Stale-quote guard: a provider whose terms have expired cannot be paid. The
+  // quote is refused (not paid), the reservation released, the row declared a
+  // failure, and the provider excluded for a fallback — exactly the pay-failure
+  // path, but without ever sending a transaction.
+  if (isStaleQuote(quote)) {
+    deps.treasury.release(taskNodeId(nodeId));
+    await deps.ledger.updateStage(
+      ledgerId,
+      newStage("payment", "failed", {
+        reason: "stale_quote",
+        terms_expires_at: quote.terms_expires_at,
+      }),
+    );
+    await deps.ledger.setOutcome(ledgerId, "declared_failure");
+    return {
+      kind: "retry",
+      providerId: quote.provider_id,
+      reason: `${quote.provider_id}: quote expired (terms_expires_at ${quote.terms_expires_at})`,
+    };
+  }
+
+  // Price-drift guard: a quote >25% above the advertised hint is refused the
+  // same way — no payment, reservation released, provider excluded for a
+  // fallback. priceHint is indicative, so small deltas are tolerated; a 25%
+  // overshoot is treated as the provider misquoting.
+  if (isPriceDrift(amount, adapter.priceHint)) {
+    deps.treasury.release(taskNodeId(nodeId));
+    await deps.ledger.updateStage(
+      ledgerId,
+      newStage("payment", "failed", {
+        reason: "price_drift",
+        quoted: amount.toString(),
+        hinted: adapter.priceHint.toString(),
+      }),
+    );
+    await deps.ledger.setOutcome(ledgerId, "declared_failure");
+    return {
+      kind: "retry",
+      providerId: quote.provider_id,
+      reason: `${quote.provider_id}: quote ${amount}uAlgo exceeds price hint ${adapter.priceHint}uAlgo by >25%`,
+    };
+  }
 
   const invoice: Invoice = {
     invoice_id: quote.invoice_id,
@@ -221,6 +277,10 @@ async function payInvoice({ input }: { input: PayInput }): Promise<PayOutput> {
     terms_expires_at: quote.terms_expires_at,
     payment_required: quote.payment_required,
   };
+  // Payment-scheme metadata from the routed adapter: "upto" invoices settle at
+  // the actual spend (uptoActual ≤ quoted) rather than the quoted amount.
+  if (adapter.scheme !== undefined) invoice.scheme = adapter.scheme;
+  if (adapter.uptoActual !== undefined) invoice.uptoActual = adapter.uptoActual;
 
   const cap = deps.treasury.issueCapability(taskNodeId(nodeId), quote.provider_id, amount);
   deps.x402.issueCapability(cap);
@@ -232,6 +292,14 @@ async function payInvoice({ input }: { input: PayInput }): Promise<PayOutput> {
       idempotency_key: idempotencyKeyValue,
     }),
   );
+
+  // MVD "fail after 402" demo knob: the provider's 402 challenge succeeds, but
+  // the payment itself fails (facilitator outage after the challenge). The
+  // one-shot knob is armed only for this provider's next payment; the pay
+  // failure path below releases + declares + re-routes.
+  if (adapter.failMode === "after_402") {
+    deps.x402.failNextPayment(quote.provider_id);
+  }
 
   const payRes = await deps.x402.pay(cap, invoice, providerUrl);
   if (!payRes.ok) {
@@ -246,6 +314,10 @@ async function payInvoice({ input }: { input: PayInput }): Promise<PayOutput> {
       tx_ref: payRes.value.txRef,
       first_payment: payRes.value.firstPayment,
       amount: amount.toString(),
+      ...(payRes.value.scheme !== undefined ? { scheme: payRes.value.scheme } : {}),
+      ...(payRes.value.actualAmount !== undefined
+        ? { actual_amount: payRes.value.actualAmount.toString() }
+        : {}),
     }),
   );
 
@@ -527,6 +599,7 @@ export const nodeMachine = setup({
           amount: context.amount,
           providerUrl: context.decision.adapter.baseUrl,
           deps: context.deps,
+          adapter: context.decision.adapter,
         }),
         onDone: [
           {
