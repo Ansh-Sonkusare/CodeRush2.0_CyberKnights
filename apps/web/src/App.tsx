@@ -22,7 +22,7 @@ import {
 import { budgetFraction, formatMicroAlgo, parseMicroAlgo } from "./format";
 
 const DEFAULT_GOAL =
-  "Assess this Algorand wallet: fetch its on-chain data, summarize the activity, and produce a credit score.";
+  "Assess this wallet 0x742d35Cc6634C0532925a3b844Bc454e4438f44e: fetch its on-chain data, summarize the activity, and produce a credit score.";
 
 const ATTACK_SCENARIOS = [
   { value: "none", label: "none", nodeId: undefined, providerId: undefined },

@@ -1,6 +1,6 @@
 import {
-  CAPABILITIES,
   PlannerGraphSchema,
+  ROUTEABLE_CAPABILITIES,
   containsForbiddenKeys,
   plannerGraphToTaskGraph,
   validateGraph,
@@ -13,7 +13,7 @@ import { FALLBACK_GRAPH } from "./fallback.js";
 export const SYSTEM_PROMPT = `You are the task planner for a policy-driven agent payment router.
 You decompose a user goal into a dependency-aware task graph of paid capability calls.
 
-The only capabilities providers sell are: ${CAPABILITIES.join(", ")}.
+The only capabilities providers sell are: ${ROUTEABLE_CAPABILITIES.join(", ")}.
 
 Respond with a single JSON object:
 { "task_id": string, "name": string, "goal": string, "steps": [ { "id": string, "label": string, "capability": one of the capabilities above, "dependsOn": string[] } ] }

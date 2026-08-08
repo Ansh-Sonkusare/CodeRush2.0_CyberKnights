@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CAPABILITIES, CapabilitySchema } from "./capability.js";
+import { ROUTEABLE_CAPABILITIES, RouteableCapabilitySchema } from "./capability.js";
 
 // ─── Task graph ───────────────────────────────────────────────────────────────
 
@@ -7,7 +7,7 @@ export const TaskStepSchema = z
   .object({
     id: z.string(),
     label: z.string(),
-    capability: CapabilitySchema,
+    capability: RouteableCapabilitySchema,
     dependsOn: z.array(z.string()).default([]),
   })
   .strict();
@@ -36,7 +36,7 @@ export const PlannerStepSchema = z
   .object({
     id: z.string(),
     label: z.string(),
-    capability: CapabilitySchema,
+    capability: RouteableCapabilitySchema,
     dependsOn: z.array(z.string()).default([]),
   })
   .strict();
@@ -55,6 +55,9 @@ export const PlannerGraphSchema = z
 export type PlannerGraph = z.infer<typeof PlannerGraphSchema>;
 
 // JSON Schema version for LLM structured output (Gemini / Ollama format)
+// capability is constrained to ROUTEABLE_CAPABILITIES — the planner may only
+// propose steps for capabilities that have registered providers, otherwise the
+// plan would route to nothing and fail end-to-end.
 export const PLANNER_GRAPH_JSON_SCHEMA: Record<string, unknown> = {
   type: "object",
   additionalProperties: false,
@@ -73,7 +76,7 @@ export const PLANNER_GRAPH_JSON_SCHEMA: Record<string, unknown> = {
         properties: {
           id: { type: "string" },
           label: { type: "string" },
-          capability: { type: "string", enum: [...CAPABILITIES] },
+          capability: { type: "string", enum: [...ROUTEABLE_CAPABILITIES] },
           dependsOn: { type: "array", items: { type: "string" } },
         },
       },

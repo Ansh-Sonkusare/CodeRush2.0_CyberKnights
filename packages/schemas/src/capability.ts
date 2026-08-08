@@ -16,8 +16,25 @@ export const CAPABILITIES = [
   "score_credit",
 ] as const;
 
+/**
+ * Capabilities that actually have registered providers in this build.
+ * The planner must only emit steps from this set — the legacy placeholder
+ * capabilities (search/extract/…) exist in the schema enum for backward
+ * compatibility but no adapter sells them, so a plan that proposes one would
+ * fail at routing. Keeping the planner constrained here is what makes the
+ * LLM-generated plan routeable end-to-end.
+ */
+export const ROUTEABLE_CAPABILITIES = [
+  "fetch_wallet_data",
+  "generate_summary",
+  "score_credit",
+] as const;
+
 export const CapabilitySchema = z.enum(CAPABILITIES);
 export type Capability = z.infer<typeof CapabilitySchema>;
+
+export const RouteableCapabilitySchema = z.enum(ROUTEABLE_CAPABILITIES);
+export type RouteableCapability = z.infer<typeof RouteableCapabilitySchema>;
 
 // ─── Per-capability strict response schemas ───────────────────────────────────
 // .strict() is the mechanism that makes "budget mutation" and "scope expansion"
@@ -68,10 +85,11 @@ export type TranslateResponse = z.infer<typeof TranslateResponseSchema>;
 export type RankResponse = z.infer<typeof RankResponseSchema>;
 export type VerifyResponse = z.infer<typeof VerifyResponseSchema>;
 
-// ─── Demo provider set (Phase 7 placeholders) ─────────────────────────────────
-// Placeholder guard schemas so CAPABILITY_RESPONSE_SCHEMAS stays a complete
-// record. Refine these against the real Zerion / LLM provider APIs when those
-// adapters are implemented — the .strict() behavior is what the guard relies on.
+// ─── Demo provider set (Phase 7) ──────────────────────────────────────────────
+// Guard schemas for the Zerion / LLM adapters. `.strict()` is what the guard
+// relies on — extra fields beyond these are structurally unrepresentable.
+// wallet_address / signals / rationale are the real fields the LLM adapters
+// (providers/llm.ts) prompt for and pin onto their results.
 
 export const WalletDataResponseSchema = z
   .object({
@@ -84,13 +102,17 @@ export const WalletDataResponseSchema = z
 export const SummaryResponseSchema = z
   .object({
     summary: z.string(),
+    wallet_address: z.string().optional(),
+    signals: z.array(z.string()).optional(),
   })
   .strict();
 
 export const CreditScoreResponseSchema = z
   .object({
     score: z.number().int().min(0).max(100),
-    reasons: z.array(z.string()),
+    reasons: z.array(z.string()).optional(),
+    rationale: z.string().optional(),
+    wallet_address: z.string().optional(),
   })
   .strict();
 

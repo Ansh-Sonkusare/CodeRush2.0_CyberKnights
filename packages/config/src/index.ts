@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { ok, err, type Result } from "@sentinel/schemas";
 
@@ -14,9 +17,39 @@ import { ok, err, type Result } from "@sentinel/schemas";
  *  - Every bad variable is listed in ConfigError.message — fail fast at boot,
  *    not at first use mid-demo.
  *  - Ports default to the values in MIGRATION.md.
+ *  - The repo-root `.env` is loaded into process.env before validation (vars
+ *    already set in the shell win over the file). `dotenv` is intentionally NOT
+ *    a dependency — services are started with plain `tsx watch`, which does not
+ *    auto-load `.env`, so without this every process would silently boot with
+ *    missing LLM/Zerion keys and fall back to mock providers.
  */
 
 export const DEFAULT_FACILITATOR_URL = "https://facilitator.goplausible.xyz";
+
+// Repo root, two levels up from packages/config/src (or packages/config/dist).
+const ROOT_ENV_PATH = new URL("../../../.env", import.meta.url);
+const ROOT_DIR = fileURLToPath(new URL("../../../", import.meta.url));
+
+/** Load the repo-root .env into process.env (shell env wins). No-op when absent. */
+function loadRootEnvFile(): void {
+  try {
+    const text = readFileSync(ROOT_ENV_PATH, "utf8");
+    for (const rawLine of text.split("\n")) {
+      const line = rawLine.trim();
+      if (!line || line.startsWith("#")) continue;
+      const eq = line.indexOf("=");
+      if (eq <= 0) continue;
+      const key = line.slice(0, eq).trim();
+      const value = line
+        .slice(eq + 1)
+        .trim()
+        .replace(/^["']|["']$/g, "");
+      if (process.env[key] === undefined) process.env[key] = value;
+    }
+  } catch {
+    // no .env present — fall back to the process environment only
+  }
+}
 
 // ─── Enums ────────────────────────────────────────────────────────────────────
 
@@ -203,23 +236,44 @@ function rawFromEnv(env: Readonly<Record<string, string | undefined>>): Record<s
 }
 
 /**
+ * Resolve a relative ledgerPath against the repo root instead of process.cwd().
+ * pm2 runs every service with a different cwd, so a bare ".data/ledger.db"
+ * would silently create one file per service and the gateway/UI would read an
+ * empty ledger while the orchestrator wrote real rows. Shared ledger = shared
+ * file. Absolute paths are passed through untouched.
+ */
+function resolveLedgerPath(raw: string): string {
+  return resolve(ROOT_DIR, raw);
+}
+
+/**
  * Parse and validate env vars. Throws ConfigError listing every bad variable.
  * The canonical boot-time entry point — call once, inject the result everywhere.
  */
 export function loadConfig(
   env: Readonly<Record<string, string | undefined>> = process.env,
 ): AppConfig {
+  loadRootEnvFile();
   const result = loadConfigSafe(env);
   if (!result.ok) throw result.error;
   return result.value;
 }
 
-/** Non-throwing variant — returns a typed Result for tests and package boundaries. */
+/**
+ * Non-throwing variant — returns a typed Result for tests and package boundaries.
+ * The given env wins over the .env file only when explicitly passed; when it
+ * defaults to process.env, the repo-root .env has already been loaded by the
+ * caller of loadConfig/loadConfigSafe. Test harnesses pass their own env object
+ * (pre-populated by tests/setup-env.ts), so this never double-loads.
+ */
 export function loadConfigSafe(
   env: Readonly<Record<string, string | undefined>> = process.env,
 ): Result<AppConfig, ConfigError> {
+  if (env === process.env) loadRootEnvFile();
   const parsed = AppConfigSchema.safeParse(rawFromEnv(env));
-  if (parsed.success) return ok(parsed.data);
+  if (parsed.success) {
+    return ok({ ...parsed.data, ledgerPath: resolveLedgerPath(parsed.data.ledgerPath) });
+  }
 
   const fieldErrors = new Map<string, string>();
   for (const issue of parsed.error.issues) {

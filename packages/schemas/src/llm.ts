@@ -35,9 +35,9 @@ export const ChatCompletionEnvelopeSchema = z
             .object({
               content: z.string().optional(),
             })
-            .strict(),
+            .passthrough(),
         })
-        .strict(),
+        .passthrough(),
     ),
   })
   .passthrough();
@@ -50,7 +50,7 @@ export const OllamaChatEnvelopeSchema = z
       .object({
         content: z.string().optional(),
       })
-      .strict(),
+      .passthrough(),
   })
   .passthrough();
 
