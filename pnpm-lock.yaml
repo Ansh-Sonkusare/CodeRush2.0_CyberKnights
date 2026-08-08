@@ -242,6 +242,9 @@ importers:
       '@sentinel/schemas':
         specifier: workspace:*
         version: link:../schemas
+      dotenv:
+        specifier: ^16.4.7
+        version: 16.4.7
       zod:
         specifier: ^4.4.3
         version: 4.4.3

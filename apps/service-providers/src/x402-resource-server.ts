@@ -28,7 +28,9 @@ import type { AppConfig } from "@sentinel/config";
 export const ALGORAND_TESTNET_NETWORK: `${string}:${string}` =
   "algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI=";
 
-// The facilitator's fee-payer address — also the USDC recipient (gasless).
+// The facilitator's fee-payer address — makes the payment gasless for the
+// client. The USDC recipient defaults to the same account unless the operator
+// sets ALGO_RECEIVER_ADDRESS (packages/config algoReceiverAddress).
 const FACILITATOR_PAYEE =
   "ZMFK2OI7ZBD2U27ISERZC4S6LKM6WMFJPZQ4MYNJDZ2VNBNMBA67RA22AA";
 
@@ -76,11 +78,14 @@ export function createX402ResourceMiddleware(
 ): MiddlewareHandler | undefined {
   try {
     const facilitator = new HTTPFacilitatorClient({ url: config.facilitatorUrl });
+    // USDC recipient: ALGO_RECEIVER_ADDRESS when set (defaults to the
+    // facilitator's payee, which is what makes the payment gasless).
+    const payTo = config.algoReceiverAddress ?? FACILITATOR_PAYEE;
     const routes = {
       [X402_WALLET_DATA_PATH]: {
         accepts: {
           scheme: "exact",
-          payTo: FACILITATOR_PAYEE,
+          payTo,
           price: X402_WALLET_DATA_PRICE,
           network: ALGORAND_TESTNET_NETWORK,
           maxTimeoutSeconds: 300,
@@ -101,7 +106,7 @@ export function createX402ResourceMiddleware(
       [X402_SUMMARY_PATH]: {
         accepts: {
           scheme: "exact",
-          payTo: FACILITATOR_PAYEE,
+          payTo,
           price: X402_SUMMARY_PRICE,
           network: ALGORAND_TESTNET_NETWORK,
           maxTimeoutSeconds: 300,
@@ -120,7 +125,7 @@ export function createX402ResourceMiddleware(
       [X402_CREDIT_SCORE_PATH]: {
         accepts: {
           scheme: "exact",
-          payTo: FACILITATOR_PAYEE,
+          payTo,
           price: X402_CREDIT_SCORE_PRICE,
           network: ALGORAND_TESTNET_NETWORK,
           maxTimeoutSeconds: 300,

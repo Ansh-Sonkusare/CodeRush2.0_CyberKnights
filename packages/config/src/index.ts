@@ -1,3 +1,6 @@
+import { existsSync } from "node:fs";
+import { dirname, isAbsolute, resolve } from "node:path";
+import { config as loadDotenv } from "dotenv";
 import { z } from "zod";
 import { ok, err, type Result } from "@sentinel/schemas";
 
@@ -17,6 +20,56 @@ import { ok, err, type Result } from "@sentinel/schemas";
  */
 
 export const DEFAULT_FACILITATOR_URL = "https://facilitator.goplausible.xyz";
+
+/**
+ * Load the repo-root .env into process.env, then let loadConfig() validate it.
+ *
+ * pnpm --filter scripts run with cwd = the package directory, so a bare
+ * `import "dotenv/config"` would look for <package>/.env and find nothing.
+ * This walks up from cwd to the nearest .env (the monorepo root) and loads it.
+ * Existing process.env values always win (dotenv never overrides) — shell-level
+ * overrides keep working. Call loadEnv() once at boot, before loadConfig().
+ */
+export function loadEnv(envFile?: string): void {
+  const target = envFile ?? findEnvFile();
+  if (target) loadDotenv({ path: target });
+}
+
+function findEnvFile(): string | undefined {
+  let dir = process.cwd();
+  for (;;) {
+    const candidate = resolve(dir, ".env");
+    if (existsSync(candidate)) return candidate;
+    const parent = dirname(dir);
+    if (parent === dir) return undefined;
+    dir = parent;
+  }
+}
+
+/**
+ * Walk up from cwd to the monorepo root (pnpm-workspace.yaml). Fallback to cwd
+ * so the ledger still lands somewhere sane when running a single package in
+ * isolation (e.g. a unit test with no workspace file nearby).
+ */
+function findRepoRoot(): string {
+  let dir = process.cwd();
+  for (;;) {
+    if (existsSync(resolve(dir, "pnpm-workspace.yaml"))) return dir;
+    const parent = dirname(dir);
+    if (parent === dir) return process.cwd();
+    dir = parent;
+  }
+}
+
+/**
+ * Anchor a relative data path (e.g. ".data/ledger.db") at the repo root instead
+ * of process.cwd(). pnpm --filter runs each app with a different cwd, so a
+ * bare relative path makes the gateway and the orchestrator open DIFFERENT
+ * SQLite files — the paid rows never reach the UI. Absolute paths pass through.
+ */
+function resolveLedgerPath(path: string): string {
+  return isAbsolute(path) ? path : resolve(findRepoRoot(), path);
+}
 
 // ─── Enums ────────────────────────────────────────────────────────────────────
 
@@ -113,9 +166,13 @@ export const AppConfigSchema = z
     // TestNet mnemonic for the Algorand signer. NEVER logged; only read by
     // @sentinel/x402-client when x402Mode === "algorand".
     algoMnemonic: z.string().optional(),
+    // TestNet address that receives the USDC payment for x402 resources. Falls
+    // back to the facilitator's payee address when unset.
+    algoReceiverAddress: z.string().optional(),
     // SQLite file path for the in-process ledger store (shared by the gateway
-    // and the orchestrator). Parent directory is created at boot.
-    ledgerPath: z.string().default(".data/ledger.db"),
+    // and the orchestrator). Relative paths resolve against the repo root so
+    // every service opens the same file. Parent directory is created at boot.
+    ledgerPath: z.string().default(".data/ledger.db").transform(resolveLedgerPath),
     mockProviders: NAME_PORT_PAIRS_SCHEMA,
     adversarialProviders: NAME_PORT_PAIRS_SCHEMA,
   })
@@ -163,6 +220,7 @@ const ENV_VAR_BY_PATH: Readonly<Record<string, string>> = {
   zerionApiKey: "ZERION_API_KEY",
   x402Mode: "X402_MODE",
   algoMnemonic: "ALGO_MNEMONIC",
+  algoReceiverAddress: "ALGO_RECEIVER_ADDRESS",
   ledgerPath: "LEDGER_PATH",
   mockProviders: "MOCK_PROVIDER_PORTS",
   adversarialProviders: "ADVERSARIAL_PROVIDER_PORTS",
@@ -196,6 +254,7 @@ function rawFromEnv(env: Readonly<Record<string, string | undefined>>): Record<s
     zerionApiKey: env.ZERION_API_KEY,
     x402Mode: env.X402_MODE,
     algoMnemonic: env.ALGO_MNEMONIC,
+    algoReceiverAddress: env.ALGO_RECEIVER_ADDRESS,
     ledgerPath: env.LEDGER_PATH,
     mockProviders: env.MOCK_PROVIDER_PORTS,
     adversarialProviders: env.ADVERSARIAL_PROVIDER_PORTS,

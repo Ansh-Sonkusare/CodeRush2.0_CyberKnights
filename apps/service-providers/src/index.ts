@@ -1,5 +1,5 @@
 import { serve } from "@hono/node-server";
-import { loadConfig } from "@sentinel/config";
+import { loadEnv, loadConfig } from "@sentinel/config";
 import { X402ProviderAdapter } from "@sentinel/providers";
 import { type ProviderAdapter } from "@sentinel/schemas";
 import { createProvidersApp } from "./app.js";
@@ -23,6 +23,7 @@ import {
   walletDataPayload,
 } from "./x402-resource-server.js";
 
+loadEnv();
 const config = loadConfig();
 
 const registry = createInMemoryRegistry();

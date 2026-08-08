@@ -2,7 +2,7 @@ import { serve } from "@hono/node-server";
 import { hc } from "hono/client";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { loadConfig } from "@sentinel/config";
+import { loadEnv, loadConfig } from "@sentinel/config";
 import { createLedgerStore } from "@sentinel/ledger";
 import { createX402Client } from "@sentinel/x402-client";
 import { createRouter, type Router } from "@sentinel/router";
@@ -25,6 +25,7 @@ function serviceUrl(port: number): string {
 }
 
 async function main(): Promise<void> {
+  loadEnv();
   const config = loadConfig();
 
   const ledgerPath = resolve(config.ledgerPath);

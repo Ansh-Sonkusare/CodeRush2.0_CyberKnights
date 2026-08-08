@@ -1,8 +1,9 @@
 import { serve } from "@hono/node-server";
-import { loadConfig } from "@sentinel/config";
+import { loadEnv, loadConfig } from "@sentinel/config";
 import { createLLMClient } from "@sentinel/llm-client";
 import { createPlannerApp } from "./app.js";
 
+loadEnv();
 const config = loadConfig();
 const client = createLLMClient(config.llm);
 const app = createPlannerApp(client);

@@ -1,11 +1,12 @@
 import { serve } from "@hono/node-server";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { loadConfig } from "@sentinel/config";
+import { loadEnv, loadConfig } from "@sentinel/config";
 import { createLedgerStore } from "@sentinel/ledger";
 import { createGatewayApp } from "./app.js";
 import { createWsHub } from "./wsHub.js";
 
+loadEnv();
 const config = loadConfig();
 const ledgerPath = resolve(config.ledgerPath);
 mkdirSync(dirname(ledgerPath), { recursive: true });
