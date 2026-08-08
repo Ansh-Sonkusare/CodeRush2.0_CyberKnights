@@ -11,6 +11,7 @@ import {
   RegisterProviderRequestSchema,
   RejectRequestSchema,
   RunRequestSchema,
+  SetFailModeRequestSchema,
   ValidateRequestSchema,
   type GatewayEnv,
   type GatewaySchema,
@@ -19,7 +20,7 @@ import {
   type ProviderRoutes,
 } from "@sentinel/schemas";
 import type { AppConfig } from "@sentinel/config";
-import type { LedgerStore } from "@sentinel/ledger";
+import { toReconciliationWire, type LedgerStore } from "@sentinel/ledger";
 
 // ─── Gateway (Phase 10) ───────────────────────────────────────────────────────
 // Single public entry point on :4000. Planner + provider + orchestrator routes
@@ -122,6 +123,19 @@ export function createGatewayApp(config: AppConfig, ledger: LedgerStore) {
     return proxyJson(c, () => providers.providers[":id"].recover.$post({ param: { id } }));
   });
 
+  app.post(
+    "/api/providers/:id/fail-mode",
+    zValidator("param", paramId),
+    zValidator("json", SetFailModeRequestSchema),
+    (c) => {
+      const { id } = c.req.valid("param");
+      const body = c.req.valid("json");
+      return proxyJson(c, () =>
+        providers.providers[":id"]["fail-mode"].$post({ param: { id }, json: body }),
+      );
+    },
+  );
+
   // ─── /api/ledger/* → in-process packages/ledger ────────────────────────────
 
   app.get("/api/ledger/rows", async (c) => c.json(await ledger.all()));
@@ -154,6 +168,16 @@ export function createGatewayApp(config: AppConfig, ledger: LedgerStore) {
       return c.json(await ledger.exportTask(c.req.valid("param").taskId));
     } catch (err) {
       const msg = err instanceof Error ? err.message : "ledger export failed";
+      return c.json({ message: msg }, 500);
+    }
+  });
+
+  app.get("/api/ledger/task/:taskId/reconcile", zValidator("param", paramTaskId), async (c) => {
+    try {
+      const report = await ledger.exportTaskReconciliation(c.req.valid("param").taskId);
+      return c.json(toReconciliationWire(report));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "ledger reconciliation failed";
       return c.json({ message: msg }, 500);
     }
   });

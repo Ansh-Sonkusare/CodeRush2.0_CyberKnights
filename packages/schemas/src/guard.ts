@@ -42,6 +42,13 @@ export interface PaymentError {
   idempotencyKey?: string;
 }
 
+// ─── Payment scheme ───────────────────────────────────────────────────────────
+// How an invoice is settled: "exact" pays the quoted amount; "upto" pays up to
+// a ceiling and settles on the actual spend (tracked on the receipt).
+
+export const PaymentSchemeSchema = z.enum(["exact", "upto"]);
+export type PaymentScheme = z.infer<typeof PaymentSchemeSchema>;
+
 export const PaymentReceiptSchema = z
   .object({
     idempotencyKey: z.string(),
@@ -55,6 +62,9 @@ export const PaymentReceiptSchema = z
     nodeId: z.string(),
     settledAt: z.string(),
     firstPayment: z.boolean(),
+    scheme: PaymentSchemeSchema.optional(),
+    // MicroAlgo actually paid — only present for the "upto" scheme.
+    actualAmount: z.bigint().optional(),
   })
   .strict();
 
@@ -72,6 +82,12 @@ export const InvoiceSchema = z
     schema: z.string(),
     terms_expires_at: z.string(),
     payment_required: z.boolean(),
+    network: z.string().optional(),
+    scheme: PaymentSchemeSchema.optional(),
+    // Expected actual spend for the "upto" scheme (≤ amount) — set from the
+    // provider adapter's uptoActual metadata so the settlement can record
+    // actual < quoted on the receipt.
+    uptoActual: z.bigint().optional(),
   })
   .strict();
 

@@ -1,9 +1,10 @@
 import type { Hono } from "hono";
-import type { JsonGet, JsonPost, ParamGet, ParamPost } from "./common.js";
+import type { JsonGet, JsonPost, ParamGet, ParamJsonPost, ParamPost } from "./common.js";
 import type {
   LedgerExport,
   LedgerRow,
   CreateLedgerRowRequest,
+  ReconciliationReportWire,
 } from "../ledger.js";
 import type {
   PlanOutcome,
@@ -17,6 +18,8 @@ import type {
   ProviderHealthResponse,
   ProviderStatusResponse,
   RegisterProviderRequest,
+  SetFailModeRequest,
+  SetFailModeResponse,
 } from "../provider.js";
 import type {
   ApproveRequest,
@@ -63,6 +66,9 @@ export type GatewaySchema = {
   "/api/providers/:id/recover": {
     $post: ParamPost<{ id: string }, ProviderStatusResponse>;
   };
+  "/api/providers/:id/fail-mode": {
+    $post: ParamJsonPost<{ id: string }, SetFailModeRequest, SetFailModeResponse, 200>;
+  };
   "/api/ledger/rows": {
     $get: JsonGet<LedgerRow[]>;
     $post: JsonPost<CreateLedgerRowRequest, LedgerRow, 201>;
@@ -75,6 +81,9 @@ export type GatewaySchema = {
   };
   "/api/ledger/task/:taskId/export": {
     $get: ParamGet<{ taskId: string }, LedgerExport>;
+  };
+  "/api/ledger/task/:taskId/reconcile": {
+    $get: ParamGet<{ taskId: string }, ReconciliationReportWire>;
   };
   "/api/ledger/node/:nodeId": {
     $get: ParamGet<{ nodeId: string }, LedgerRow>;

@@ -6,6 +6,8 @@ import {
   type PauseInfo,
   type PlanOutcome,
   type RouteDecision,
+  type RouteProfile,
+  type RouteProfileResolution,
   type TaskGraph,
   type TaskId,
   type TaskStep,
@@ -60,6 +62,13 @@ export interface TaskInput {
     decision: RouteDecision;
     upstream: Record<string, Record<string, unknown>>;
   }[]) => void;
+  /**
+   * Factory to rebuild the router for this run when the plan returns a
+   * route_profile. The task machine calls this once — after planning —
+   * to swap the initial goal-heuristic router for a profile-aware one.
+   * This is a run-local mutation: only the in-context router is replaced.
+   */
+  rebuildRouter: (profile: RouteProfile) => void;
 }
 
 export interface TaskOutput {
@@ -81,8 +90,10 @@ interface TaskContext {
     decision: RouteDecision;
     upstream: Record<string, Record<string, unknown>>;
   }[]) => void;
+  rebuildRouter: (profile: RouteProfile) => void;
   graph: TaskGraph | undefined;
   planSource: "planner" | "fallback" | undefined;
+  route_profile: RouteProfileResolution | undefined;
   nodes: Record<string, NodeState>;
   started: string[];
   waiting: string[];
@@ -331,8 +342,10 @@ export const taskMachine = machine.createMachine({
     plan: input.plan,
     broadcast: input.broadcast,
     spawnReady: input.spawnReady,
+    rebuildRouter: input.rebuildRouter,
     graph: undefined,
     planSource: undefined,
+    route_profile: undefined,
     nodes: {},
     started: [],
     waiting: [],
@@ -366,9 +379,16 @@ export const taskMachine = machine.createMachine({
               const outcome = event.output as PlanOutcome;
               const nodes: Record<string, NodeState> = {};
               for (const step of outcome.graph.steps) nodes[step.id] = { kind: "pending" };
+              // If the plan (LLM or heuristic fallback) carries a route_profile,
+              // rebuild the run-local router with profile-aware weights so
+              // retries and fallbacks use the same routing preference.
+              if (outcome.route_profile !== undefined) {
+                context.rebuildRouter(outcome.route_profile.profile);
+              }
               return {
                 graph: outcome.graph,
                 planSource: outcome.source,
+                route_profile: outcome.route_profile,
                 nodes,
                 budget: context.deps.treasury.status(),
               };
@@ -382,6 +402,7 @@ export const taskMachine = machine.createMachine({
                 goal: context.goal,
                 graph,
                 planSource: context.planSource ?? "planner",
+                route_profile: context.route_profile,
                 at: new Date().toISOString(),
               });
             },

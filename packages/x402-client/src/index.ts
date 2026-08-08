@@ -38,6 +38,14 @@ export interface X402Client {
    * for this invoice (e.g. simulated client, or the fetch body was unreadable).
    */
   getResourceContent(invoiceId: string): unknown | undefined;
+  /**
+   * MVD "fail after 402" knob: persistently fail every payment for a provider
+   * with a chain_error until cleared with `null`. Simulates a facilitator
+   * outage AFTER the 402 challenge — the node has already decided to pay.
+   */
+  setFailure(providerId: string, phase: "post_402" | null): void;
+  /** MVD "fail after 402" knob: fail the NEXT payment for a provider (one-shot). */
+  failNextPayment(providerId: string): void;
 }
 
 // Re-export the 402-challenge header parser so provider adapters can build a
@@ -59,9 +67,25 @@ export class SimulatedX402Client implements X402Client {
   private settlements = new Map<string, PaymentReceipt>();
   private capabilities = new Map<ScopedCapabilityToken, ScopedCapability>();
   private txCounter = 0;
+  /** Failed idempotency keys — a retried pay returns the SAME error, no re-sign. */
+  private failedKeys = new Map<string, PaymentError>();
+  private persistentFailures = new Map<string, "post_402">();
+  private oneShotFailures = new Set<string>();
 
   issueCapability(capability: ScopedCapability): void {
     this.capabilities.set(capability.token, capability);
+  }
+
+  /** MVD fail-after-402 knob: persistently fail payments for a provider until
+   * cleared with `null`. */
+  setFailure(providerId: string, phase: "post_402" | null): void {
+    if (phase === null) this.persistentFailures.delete(providerId);
+    else this.persistentFailures.set(providerId, phase);
+  }
+
+  /** MVD fail-after-402 knob: fail the next payment for a provider (one-shot). */
+  failNextPayment(providerId: string): void {
+    this.oneShotFailures.add(providerId);
   }
 
   async pay(
@@ -82,6 +106,10 @@ export class SimulatedX402Client implements X402Client {
     if (existing) {
       return ok({ ...existing, firstPayment: false });
     }
+    const priorFailure = this.failedKeys.get(key);
+    if (priorFailure) {
+      return err(priorFailure);
+    }
 
     if (registered.providerId !== invoice.provider_id) {
       return err({
@@ -98,6 +126,30 @@ export class SimulatedX402Client implements X402Client {
       });
     }
 
+    // Fail-after-402 knob: the 402 challenge succeeded (a valid invoice for the
+    // provider) but the payment itself fails — facilitator outage. The failed
+    // key is recorded so a retry returns the SAME error without re-signing.
+    const oneShot = this.oneShotFailures.has(invoice.provider_id);
+    if (this.persistentFailures.has(invoice.provider_id) || oneShot) {
+      if (oneShot) this.oneShotFailures.delete(invoice.provider_id);
+      const error: PaymentError = {
+        kind: "chain_error",
+        message: `simulated post-402 failure for "${invoice.provider_id}": facilitator outage after payment`,
+        idempotencyKey: key,
+      };
+      this.failedKeys.set(key, error);
+      return err(error);
+    }
+
+    // "upto" scheme: settle at the actual spend (min of quote and uptoActual),
+    // never above the quoted amount. "exact"/absent keeps the quoted amount.
+    const actual =
+      invoice.scheme === "upto" &&
+      invoice.uptoActual !== undefined &&
+      invoice.uptoActual < invoice.amount
+        ? invoice.uptoActual
+        : invoice.amount;
+
     this.txCounter += 1;
     const receipt: PaymentReceipt = {
       idempotencyKey: key,
@@ -110,6 +162,8 @@ export class SimulatedX402Client implements X402Client {
       settledAt: new Date().toISOString(),
       firstPayment: true,
     };
+    if (invoice.scheme !== undefined) receipt.scheme = invoice.scheme;
+    if (invoice.scheme === "upto") receipt.actualAmount = actual;
     this.settlements.set(key, receipt);
     return ok(receipt);
   }
@@ -162,6 +216,9 @@ export class AlgorandX402Client implements X402Client {
   private resources = new Map<string, unknown>();
   private payingFetch: ReturnType<typeof wrapFetchWithPayment>;
   private requestInit?: RequestInit;
+  private failedKeys = new Map<string, PaymentError>();
+  private persistentFailures = new Map<string, "post_402">();
+  private oneShotFailures = new Set<string>();
 
   constructor(config: AlgorandX402ClientConfig) {
     const account = algosdk.mnemonicToSecretKey(config.mnemonic);
@@ -176,6 +233,18 @@ export class AlgorandX402Client implements X402Client {
 
   issueCapability(capability: ScopedCapability): void {
     this.capabilities.set(capability.token, capability);
+  }
+
+  /** MVD fail-after-402 knob: persistently fail payments for a provider until
+   * cleared with `null`. */
+  setFailure(providerId: string, phase: "post_402" | null): void {
+    if (phase === null) this.persistentFailures.delete(providerId);
+    else this.persistentFailures.set(providerId, phase);
+  }
+
+  /** MVD fail-after-402 knob: fail the next payment for a provider (one-shot). */
+  failNextPayment(providerId: string): void {
+    this.oneShotFailures.add(providerId);
   }
 
   async pay(
@@ -204,6 +273,10 @@ export class AlgorandX402Client implements X402Client {
     if (existing) {
       return ok({ ...existing, firstPayment: false });
     }
+    const priorFailure = this.failedKeys.get(key);
+    if (priorFailure) {
+      return err(priorFailure);
+    }
 
     const providerId = invoice?.provider_id ?? registered.providerId;
     if (registered.providerId !== providerId) {
@@ -220,6 +293,20 @@ export class AlgorandX402Client implements X402Client {
         message: `invoice amount ${amount} exceeds capability max ${registered.maxAmount}`,
         idempotencyKey: key,
       });
+    }
+
+    // Fail-after-402 knob (best-effort before the network call — the facilitator
+    // outage is simulated exactly like the simulated client).
+    const oneShot = this.oneShotFailures.has(providerId);
+    if (this.persistentFailures.has(providerId) || oneShot) {
+      if (oneShot) this.oneShotFailures.delete(providerId);
+      const error: PaymentError = {
+        kind: "chain_error",
+        message: `simulated post-402 failure for "${providerId}": facilitator outage after payment`,
+        idempotencyKey: key,
+      };
+      this.failedKeys.set(key, error);
+      return err(error);
     }
 
     let response: Response;

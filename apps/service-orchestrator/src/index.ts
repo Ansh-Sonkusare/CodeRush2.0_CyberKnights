@@ -5,7 +5,7 @@ import { dirname, resolve } from "node:path";
 import { loadConfig } from "@sentinel/config";
 import { createLedgerStore } from "@sentinel/ledger";
 import { createX402Client } from "@sentinel/x402-client";
-import { createRouter, type Router } from "@sentinel/router";
+import { createRouter, resolveWeights } from "@sentinel/router";
 import {
   RemoteProviderAdapter,
   X402ProviderAdapter,
@@ -57,8 +57,9 @@ async function main(): Promise<void> {
   // A provider catalog entry is untrusted wire input — fromWire validates it.
   // Entries marked `failed` (the registry's demo fail/recover knob) are
   // excluded from routing so the router/fallback path can be demoed live.
+  // The router itself is built per-run (with goal-derived weights) — no shared
+  // singleton needed here.
   let currentAdapters: ProviderAdapter[] = [];
-  let currentRouter: Router = createRouter([]);
 
   async function refreshProviders(): Promise<void> {
     try {
@@ -87,7 +88,6 @@ async function main(): Promise<void> {
         }
       }
       currentAdapters = next;
-      currentRouter = createRouter(next);
     } catch (err) {
       // Registry unreachable mid-run — keep the previous catalog rather than
       // wiping it; runs will fail to route only if nothing is ever loaded.
@@ -108,7 +108,14 @@ async function main(): Promise<void> {
     ledger,
     x402,
     refreshProviders,
-    router: () => currentRouter,
+    /**
+     * Goal-aware router factory: each run starts with goal-heuristic weights,
+     * and the task machine replaces the router once the plan's route_profile
+     * is known (via rebuildRouter, injected by createTaskRunner).
+     */
+    router: (goal) => createRouter(currentAdapters, {
+      weights: resolveWeights(goal),
+    }),
     adapters: () => currentAdapters,
   });
 

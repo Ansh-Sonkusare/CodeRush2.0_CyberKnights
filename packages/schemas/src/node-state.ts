@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { PolicyViolationSchema } from "./guard.js";
-import { TaskGraphSchema } from "./planner.js";
+import { RouteProfileResolutionSchema, TaskGraphSchema } from "./planner.js";
 
 /** Money on the wire — bigint leaves leave every HTTP/WS boundary as decimal
  * strings (jsonStringify); a UI/HTTP consumer parses with this shape. */
@@ -113,6 +113,7 @@ export const ExecutionStatusSchema = z
     // React Flow graph from this (fallback skeleton is not the real plan).
     graph: TaskGraphSchema.optional(),
     planSource: z.enum(["planner", "fallback"]).optional(),
+    route_profile: RouteProfileResolutionSchema.optional(),
     nodes: z.record(z.string(), NodeStateSchema),
     budget: BudgetStatusSchema,
     pauseInfo: PauseInfoSchema.optional(),
@@ -209,6 +210,7 @@ export const ExecutionStatusWireSchema = z
     status: TaskStatusSchema,
     graph: TaskGraphSchema.optional(),
     planSource: z.enum(["planner", "fallback"]).optional(),
+    route_profile: RouteProfileResolutionSchema.optional(),
     nodes: z.record(z.string(), NodeStateWireSchema),
     budget: BudgetStatusWireSchema,
     pauseInfo: PauseInfoWireSchema.optional(),

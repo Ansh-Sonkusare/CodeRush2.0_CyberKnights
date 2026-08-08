@@ -617,7 +617,7 @@ select:focus {
 
 .replay {
   padding: 10px 12px;
-  overflow-y: auto;
+  overflow: auto;
 }
 
 .replay-actions {
@@ -665,4 +665,365 @@ select:focus {
 
 .outcome-pending_approval {
   color: var(--amber);
+}
+
+/* ─── Route profile chip ─────────────────────────────────────────────────── */
+
+.chip-profile {
+  color: var(--purple);
+  border-color: var(--purple);
+  font-weight: 700;
+}
+
+/* ─── Demo presets ───────────────────────────────────────────────────────── */
+
+.demo-flow {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  margin-bottom: 6px;
+  background: var(--bg);
+}
+
+.demo-flow-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.demo-flow-desc {
+  font-size: 10px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+.demo-flow-watch {
+  font-size: 9px;
+  color: var(--cyan);
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ─── Pipeline status callout ────────────────────────────────────────────── */
+
+.callout .stat-row {
+  display: flex;
+  gap: 8px;
+}
+
+.stat {
+  flex: 1;
+  text-align: center;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 4px;
+}
+
+.stat-value {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.stat-label {
+  font-size: 9px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* ─── Provider catalog readout (data-driven) ─────────────────────────────── */
+
+.provider-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.kind-badge {
+  font-size: 9px;
+  font-weight: 700;
+  border: 1px solid;
+  border-radius: 4px;
+  padding: 0 5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.kind-zerion,
+.kind-llm-summary,
+.kind-llm-credit {
+  color: var(--green);
+  border-color: var(--green);
+}
+
+.kind-mock {
+  color: var(--cyan);
+  border-color: var(--cyan);
+}
+
+.kind-adversarial {
+  color: var(--red);
+  border-color: var(--red);
+}
+
+.mode-badge {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--red);
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid var(--red);
+  border-radius: 4px;
+  padding: 0 5px;
+}
+
+.chip-mini {
+  font-size: 9px;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 6px;
+}
+
+.metric-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 3px;
+}
+
+.metric-label {
+  font-size: 9px;
+  color: var(--muted);
+  width: 44px;
+  text-transform: uppercase;
+}
+
+.metric-track {
+  flex: 1;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.metric-fill {
+  height: 100%;
+  border-radius: 3px;
+}
+
+.metric-price {
+  background: var(--amber);
+}
+
+.metric-latency {
+  background: var(--cyan);
+}
+
+.metric-quality {
+  background: var(--green);
+}
+
+.failmode-select {
+  width: auto;
+  flex: 1;
+  font-size: 10px;
+  padding: 3px 4px;
+}
+
+/* ─── Node card chips + fallback indicator ───────────────────────────────── */
+
+.node-chips {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.node-chip {
+  font-size: 9px;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 6px;
+}
+
+.fallback-badge {
+  margin-top: 5px;
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--amber);
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid var(--amber);
+  border-radius: 4px;
+  padding: 2px 6px;
+}
+
+/* ─── Pause panel: nodes + spent-vs-projected bar ────────────────────────── */
+
+.pause-nodes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 6px 0;
+}
+
+.pause-node {
+  font-size: 10px;
+  color: var(--purple);
+  border: 1px solid var(--purple);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+
+.budget-bar-sm {
+  padding: 6px 8px;
+  margin-bottom: 4px;
+}
+
+.budget-fill-projected {
+  background: linear-gradient(90deg, var(--purple), var(--amber));
+}
+
+/* ─── Events: re-routed transitions ──────────────────────────────────────── */
+
+.event-reroute {
+  background: rgba(245, 158, 11, 0.12);
+  border-left: 3px solid var(--amber);
+  padding: 3px 6px;
+  margin: 3px -6px;
+  border-radius: 0 4px 4px 0;
+}
+
+.route-reason {
+  color: var(--amber);
+  font-size: 10px;
+}
+
+/* ─── Reconciliation tab ─────────────────────────────────────────────────── */
+
+.rec-meta {
+  font-size: 10px;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+.rec-summary {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.rec-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 4px;
+  text-align: center;
+}
+
+.rec-card.rec-ok {
+  border-color: var(--green);
+}
+
+.rec-card.rec-bad {
+  border-color: var(--red);
+}
+
+.rec-value {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.rec-label {
+  font-size: 8px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-top: 2px;
+}
+
+.rec-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 10px;
+  min-width: 640px;
+}
+
+.rec-table th,
+.rec-table td {
+  text-align: left;
+  padding: 4px 5px;
+  border-bottom: 1px solid rgba(51, 65, 85, 0.4);
+  white-space: nowrap;
+}
+
+.rec-table th {
+  color: var(--muted);
+  text-transform: uppercase;
+  font-size: 9px;
+}
+
+.idem-key {
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.tx-col {
+  color: var(--green);
+  font-size: 9px;
+}
+
+.stages-details {
+  font-size: 9px;
+}
+
+.stages-details summary {
+  cursor: pointer;
+  color: var(--accent);
+}
+
+.stage-row {
+  display: flex;
+  gap: 6px;
+  padding: 1px 0;
+}
+
+.stage-status {
+  width: 52px;
+  text-transform: uppercase;
+  font-size: 8px;
+}
+
+.stage-pending,
+.stage-skipped {
+  color: var(--muted);
+}
+
+.stage-sent,
+.stage-received {
+  color: var(--cyan);
+}
+
+.stage-settled {
+  color: var(--green);
+}
+
+.stage-failed {
+  color: var(--red);
+}
+
+.stage-name {
+  color: var(--text);
+}
+
+.stage-time {
+  color: var(--muted);
+  margin-left: auto;
 }

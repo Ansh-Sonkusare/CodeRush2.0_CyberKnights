@@ -4,6 +4,7 @@ import {
   type ProviderAdapter,
   type Result,
   type RouteDecision,
+  type RouteProfile,
   type RouterError,
   err,
   idempotencyKey as makeIdempotencyKey,
@@ -37,8 +38,73 @@ export interface Router {
   select(
     capability: Capability,
     excludeProviderIds?: readonly string[],
+    network?: string,
   ): Result<RouteDecision, RouterError>;
 }
+
+// ─── Prompt-aware routing ─────────────────────────────────────────────────────
+// Maps a user goal (or an LLM-supplied route profile) onto RouterWeights.
+// The LLM profile wins when both are present; the keyword heuristic is the
+// fallback. "balanced" always returns a fresh copy of DEFAULT_WEIGHTS so
+// callers can never mutate the shared default.
+
+const PRICE_KEYWORDS = ["cheap", "budget", "cost", "price"];
+const QUALITY_KEYWORDS = ["quality", "best", "reliable", "premium"];
+const LATENCY_KEYWORDS = ["fast", "low-latency", "low latency", "quick", "speedy"];
+
+/** Keyword heuristic: map a user goal to a route profile. Case-insensitive.
+ * A tie across distinct profiles (e.g. "cheap and fast") resolves to
+ * "balanced" rather than silently preferring one dimension. */
+export function profileForGoal(goal: string): RouteProfile {
+  const text = goal.toLowerCase();
+  let matched: RouteProfile | null = null;
+  const profiles: ReadonlyArray<readonly [RouteProfile, readonly string[]]> = [
+    ["price", PRICE_KEYWORDS],
+    ["quality", QUALITY_KEYWORDS],
+    ["latency", LATENCY_KEYWORDS],
+  ];
+  for (const [profile, keywords] of profiles) {
+    if (keywords.some((k) => text.includes(k))) {
+      if (matched !== null && matched !== profile) return "balanced";
+      matched = profile;
+    }
+  }
+  return matched ?? "balanced";
+}
+
+const PROFILE_WEIGHTS: Record<RouteProfile, RouterWeights> = {
+  price: { price: 0.8, latency: 0.1, quality: 0.1, qualityThreshold: 0.7 },
+  quality: { price: 0.1, latency: 0.1, quality: 0.8, qualityThreshold: 0.85 },
+  latency: { price: 0.2, latency: 0.7, quality: 0.1, qualityThreshold: 0.7 },
+  balanced: { ...DEFAULT_WEIGHTS },
+};
+
+/** Weights for a route profile. Always a fresh copy — never the shared
+ * DEFAULT_WEIGHTS object. */
+export function weightsForProfile(profile: RouteProfile): RouterWeights {
+  return { ...PROFILE_WEIGHTS[profile] };
+}
+
+/** Weights derived from the goal's keyword heuristic. */
+export function weightsForGoal(goal: string): RouterWeights {
+  return weightsForProfile(profileForGoal(goal));
+}
+
+/** LLM-supplied profile wins; the goal heuristic is the fallback. */
+export function resolveWeights(goal: string, llmProfile?: RouteProfile): RouterWeights {
+  return weightsForProfile(llmProfile ?? profileForGoal(goal));
+}
+
+// ─── Network scope helpers ────────────────────────────────────────────────────
+// Multi-network prep: an adapter without an explicit network is assumed to be
+// on TestNet. `network === undefined` means "no filter" — behave exactly as the
+// pre-filter router did so existing callers compile and run unchanged.
+
+const matchesNetwork = (a: ProviderAdapter, network: string | undefined): boolean =>
+  network === undefined || (a.network ?? "testnet") === network;
+
+const describeScope = (capability: Capability, network?: string): string =>
+  network === undefined ? `"${capability}"` : `"${capability}" on network "${network}"`;
 
 const round = (n: number, places = 4): number => {
   const f = 10 ** places;
@@ -120,13 +186,16 @@ export class WeightedRouter implements Router {
   select(
     capability: Capability,
     excludeProviderIds: readonly string[] = [],
+    network?: string,
   ): Result<RouteDecision, RouterError> {
-    const forCapability = this.adapters.filter((a) => a.capability === capability);
+    const forCapability = this.adapters.filter(
+      (a) => a.capability === capability && matchesNetwork(a, network),
+    );
     if (forCapability.length === 0) {
       return err({
         kind: "capability_unsupported",
         capability,
-        message: `no provider registered for capability "${capability}"`,
+        message: `no provider registered for ${describeScope(capability, network)}`,
       });
     }
 
@@ -136,7 +205,7 @@ export class WeightedRouter implements Router {
       return err({
         kind: "no_candidate",
         capability,
-        message: `all providers for "${capability}" are excluded (${[...excluded].join(", ")})`,
+        message: `all providers for ${describeScope(capability, network)} are excluded (${[...excluded].join(", ")})`,
       });
     }
 
@@ -148,7 +217,7 @@ export class WeightedRouter implements Router {
         kind: "all_below_threshold",
         capability,
         message:
-          `no candidate for "${capability}" meets quality threshold ` +
+          `no candidate for ${describeScope(capability, network)} meets quality threshold ` +
           `${this.weights.qualityThreshold} (all: ` +
           `${remaining.map((p) => `${p.providerId}=${p.qualityScore}`).join(", ")})`,
       });
@@ -208,13 +277,16 @@ export class BanditRouter implements Router {
   select(
     capability: Capability,
     excludeProviderIds: readonly string[] = [],
+    network?: string,
   ): Result<RouteDecision, RouterError> {
-    const forCapability = this.adapters.filter((a) => a.capability === capability);
+    const forCapability = this.adapters.filter(
+      (a) => a.capability === capability && matchesNetwork(a, network),
+    );
     if (forCapability.length === 0) {
       return err({
         kind: "capability_unsupported",
         capability,
-        message: `no provider registered for capability "${capability}"`,
+        message: `no provider registered for ${describeScope(capability, network)}`,
       });
     }
 
@@ -224,7 +296,7 @@ export class BanditRouter implements Router {
       return err({
         kind: "no_candidate",
         capability,
-        message: `all providers for "${capability}" are excluded (${[...excluded].join(", ")})`,
+        message: `all providers for ${describeScope(capability, network)} are excluded (${[...excluded].join(", ")})`,
       });
     }
 

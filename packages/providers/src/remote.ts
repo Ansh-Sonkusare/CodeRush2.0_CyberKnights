@@ -12,6 +12,9 @@ import {
   type ProviderCatalogEntry,
   type ProviderCatalogEntryWire,
   type ProviderError,
+  type ProviderFailMode,
+  type ProviderKind,
+  type ProviderMode,
   type QuoteResponse,
   type Result,
 } from "@sentinel/schemas";
@@ -40,6 +43,13 @@ export class RemoteProviderAdapter implements ProviderAdapter {
   readonly baseUrl: string;
   readonly role: "primary" | "backup";
   readonly integration: "mock";
+  readonly kind?: ProviderKind;
+  readonly mode?: ProviderMode;
+  readonly failMode?: ProviderFailMode;
+  readonly scheme?: "exact" | "upto";
+  readonly uptoActual?: MicroAlgo;
+  readonly priceDriftPct?: number;
+  readonly network?: string;
 
   constructor(entry: ProviderCatalogEntry) {
     this.providerId = entry.provider_id;
@@ -53,6 +63,13 @@ export class RemoteProviderAdapter implements ProviderAdapter {
     // classic (non-x402) wire contract. Real x402 providers get their own
     // adapter class (X402ProviderAdapter) so routing stays type-honest.
     this.integration = "mock";
+    if (entry.kind !== undefined) this.kind = entry.kind;
+    if (entry.mode !== undefined) this.mode = entry.mode;
+    if (entry.failMode !== undefined) this.failMode = entry.failMode;
+    if (entry.scheme !== undefined) this.scheme = entry.scheme;
+    if (entry.uptoActual !== undefined) this.uptoActual = microAlgo(entry.uptoActual);
+    if (entry.priceDriftPct !== undefined) this.priceDriftPct = entry.priceDriftPct;
+    if (entry.network !== undefined) this.network = entry.network;
   }
 
   async quote(goal: string): Promise<Result<QuoteResponse, ProviderError>> {
@@ -133,6 +150,13 @@ export function toWire(adapter: ProviderAdapter): ProviderCatalogEntryWire {
     base_url: adapter.baseUrl,
     role: adapter.role,
     integration: adapter.integration,
+    ...(adapter.kind !== undefined ? { kind: adapter.kind } : {}),
+    ...(adapter.mode !== undefined ? { mode: adapter.mode } : {}),
+    ...(adapter.failMode !== undefined ? { failMode: adapter.failMode } : {}),
+    ...(adapter.scheme !== undefined ? { scheme: adapter.scheme } : {}),
+    ...(adapter.uptoActual !== undefined ? { uptoActual: adapter.uptoActual.toString() } : {}),
+    ...(adapter.priceDriftPct !== undefined ? { priceDriftPct: adapter.priceDriftPct } : {}),
+    ...(adapter.network !== undefined ? { network: adapter.network } : {}),
   };
 }
 
@@ -152,5 +176,12 @@ export function fromWire(wire: ProviderCatalogEntryWire): ProviderCatalogEntry {
     base_url: checked.data.base_url,
     role: checked.data.role,
     integration: checked.data.integration,
+    ...(checked.data.kind !== undefined ? { kind: checked.data.kind } : {}),
+    ...(checked.data.mode !== undefined ? { mode: checked.data.mode } : {}),
+    ...(checked.data.failMode !== undefined ? { failMode: checked.data.failMode } : {}),
+    ...(checked.data.scheme !== undefined ? { scheme: checked.data.scheme } : {}),
+    ...(checked.data.uptoActual !== undefined ? { uptoActual: BigInt(checked.data.uptoActual) } : {}),
+    ...(checked.data.priceDriftPct !== undefined ? { priceDriftPct: checked.data.priceDriftPct } : {}),
+    ...(checked.data.network !== undefined ? { network: checked.data.network } : {}),
   };
 }

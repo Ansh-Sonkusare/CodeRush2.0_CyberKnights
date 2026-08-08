@@ -3,16 +3,8 @@ import { loadConfig } from "@sentinel/config";
 import { X402ProviderAdapter } from "@sentinel/providers";
 import { type ProviderAdapter } from "@sentinel/schemas";
 import { createProvidersApp } from "./app.js";
+import { loadCatalog } from "./catalog.js";
 import { createInMemoryRegistry } from "./registry.js";
-import { ZerionWalletDataProvider } from "./providers/zerion.js";
-import { LLMCreditScoreProvider, LLMSummaryProvider } from "./providers/llm.js";
-import {
-  adversarialSummaryMock,
-  adversarialWalletMock,
-  creditScoreMock,
-  summaryMock,
-  walletDataMock,
-} from "./providers/mock.js";
 import {
   X402_CREDIT_SCORE_PATH,
   X402_SUMMARY_PATH,
@@ -81,39 +73,17 @@ if (config.x402Mode === "algorand") {
     );
   }
 } else {
-  registry.register(
-    new ZerionWalletDataProvider({
-      ...(config.zerionApiKey !== undefined ? { apiKey: config.zerionApiKey } : {}),
-    }),
-  );
-  registry.register(
-    new LLMSummaryProvider({
-      baseUrl: config.llm.baseUrl,
-      apiKey: config.llm.apiKey,
-      model: config.llm.model,
-    }),
-  );
-  registry.register(
-    new LLMCreditScoreProvider({
-      baseUrl: config.llm.baseUrl,
-      apiKey: config.llm.apiKey,
-      model: config.llm.model,
-    }),
-  );
-
-  // In-process demo providers — routable, paying, delivering (see providers/mock).
-  // The well-behaved set wins the router over the placeholders on price; the
-  // adversarial set exists so the policy guard can be demoed live via the run
-  // request's attackNode. Their catalog base URLs point back at this service's
-  // /mock/:id/* routes so the orchestrator's RemoteProviderAdapter can reach them.
-  const mockBase = (id: string): string =>
-    `http://127.0.0.1:${config.ports.providers}/mock/${id}`;
-
-  registry.register(walletDataMock(mockBase("mock-wallet-data")));
-  registry.register(summaryMock(mockBase("mock-summary")));
-  registry.register(creditScoreMock(mockBase("mock-credit-score")));
-  registry.register(adversarialWalletMock(mockBase("mock-wallet-data-adversarial")));
-  registry.register(adversarialSummaryMock(mockBase("mock-summary-adversarial")));
+  // Simulated mode — the full data-driven catalog (data/catalog.json) is the
+  // single source of truth. The loader (src/catalog.ts) builds every adapter:
+  // the real zerion / llm-summary / llm-credit tiers (which fail at quote()
+  // without API keys, so the router falls back to the mock tiers) plus the
+  // well-behaved mock set and the adversarial mock providers used to demo the
+  // policy guard. Their catalog base URLs point back at this service's
+  // /mock/:id/* routes so the orchestrator's RemoteProviderAdapter can reach
+  // them.
+  for (const adapter of loadCatalog(config)) {
+    registry.register(adapter);
+  }
 }
 
 serve({ fetch: app.fetch, port: config.ports.providers }, (info) => {

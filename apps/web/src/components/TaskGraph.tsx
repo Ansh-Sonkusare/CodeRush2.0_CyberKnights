@@ -12,7 +12,7 @@ import {
   type Edge,
   type Node,
 } from "reactflow";
-import type { NodeStateWire, TaskGraph } from "@sentinel/schemas";
+import type { NodeStateWire, ProviderCatalogEntryWire, TaskGraph } from "@sentinel/schemas";
 import StepNode, { type StepNodeData } from "./StepNode";
 
 const NODE_TYPES = { stepNode: StepNode };
@@ -89,9 +89,13 @@ function nodeColor(state: NodeStateWire | undefined): string {
 interface TaskGraphProps {
   graph: TaskGraph;
   nodeStates: Record<string, NodeStateWire>;
+  /** Provider catalog keyed by id — node cards read scheme/network from here. */
+  providersById?: Record<string, ProviderCatalogEntryWire>;
+  /** nodeId → fallback provider (reroute tracking from useWs). */
+  reroutes?: Record<string, string>;
 }
 
-export default function TaskGraphView({ graph, nodeStates }: TaskGraphProps) {
+export default function TaskGraphView({ graph, nodeStates, providersById, reroutes }: TaskGraphProps) {
   const layout = useMemo(() => computeLayout(graph.steps), [graph]);
 
   // Position-only nodes — the state machine data is merged in liveNodes so a
@@ -144,14 +148,25 @@ export default function TaskGraphView({ graph, nodeStates }: TaskGraphProps) {
   // Merge live node states into node data.
   const liveNodes = useMemo(
     () =>
-      nodes.map((n) => ({
-        ...n,
-        data: {
-          ...n.data,
-          nodeState: nodeStates[n.id] ?? { kind: "pending" },
-        },
-      })),
-    [nodes, nodeStates],
+      nodes.map((n) => {
+        const ns = nodeStates[n.id] ?? { kind: "pending" };
+        const providerId = "providerId" in ns ? ns.providerId : undefined;
+        const meta =
+          providerId !== undefined ? providersById?.[providerId] : undefined;
+        return {
+          ...n,
+          data: {
+            ...n.data,
+            nodeState: ns,
+            providerMeta:
+              meta !== undefined
+                ? { scheme: meta.scheme, network: meta.network }
+                : null,
+            fellBackTo: reroutes?.[n.id] ?? null,
+          },
+        };
+      }),
+    [nodes, nodeStates, providersById, reroutes],
   );
 
   return (

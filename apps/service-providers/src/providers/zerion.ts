@@ -32,7 +32,12 @@ import {
  */
 
 export interface ZerionAdapterConfig {
-  /** Catalog HTTP surface for this provider (quote/deliver/health routes). */
+  /**
+   * Catalog HTTP surface for this provider (quote/deliver/health routes).
+   * Preferred name; `baseUrl` below is kept as the legacy alias.
+   */
+  readonly surfaceBaseUrl?: string;
+  /** Legacy alias for surfaceBaseUrl (kept so existing constructions work). */
   readonly baseUrl?: string;
   /** Zerion v1 API base URL. Defaults to the public Zerion endpoint. */
   readonly upstreamBaseUrl?: string;
@@ -40,6 +45,11 @@ export interface ZerionAdapterConfig {
   readonly apiKey?: string;
   /** Injectable fetch implementation (testability). */
   readonly fetchFn?: typeof fetch;
+  /** Catalog metadata overrides (from data/catalog.json) — defaults preserved. */
+  readonly providerId?: string;
+  readonly priceHint?: MicroAlgo;
+  readonly latencyHintMs?: number;
+  readonly qualityScore?: number;
 }
 
 const ZERION_API_BASE = "https://api.zerion.io/v1";
@@ -101,11 +111,11 @@ function extractTotalValue(body: unknown): number | undefined {
 }
 
 export class ZerionWalletDataProvider implements ProviderAdapter {
-  readonly providerId = "zerion-wallet-data";
+  readonly providerId: string;
   readonly capability: Capability = "fetch_wallet_data";
-  readonly priceHint: MicroAlgo = microAlgo(3n);
-  readonly latencyHintMs = 100;
-  readonly qualityScore = 0.98;
+  readonly priceHint: MicroAlgo;
+  readonly latencyHintMs: number;
+  readonly qualityScore: number;
   readonly role: "primary" = "primary";
   readonly integration: "mock" = "mock";
   readonly baseUrl: string;
@@ -116,10 +126,15 @@ export class ZerionWalletDataProvider implements ProviderAdapter {
   private readonly invoiceAddresses = new Map<string, string>();
 
   constructor(config: ZerionAdapterConfig = {}) {
+    this.providerId = config.providerId ?? "zerion-wallet-data";
+    this.priceHint = config.priceHint ?? microAlgo(3n);
+    this.latencyHintMs = config.latencyHintMs ?? 100;
+    this.qualityScore = config.qualityScore ?? 0.98;
     this.upstreamBaseUrl = config.upstreamBaseUrl ?? ZERION_API_BASE;
     this.apiKey = config.apiKey;
     this.fetchFn = config.fetchFn ?? globalThis.fetch;
     this.baseUrl =
+      config.surfaceBaseUrl ??
       config.baseUrl ??
       `http://127.0.0.1:${DEFAULT_PROVIDERS_PORT}/mock/${this.providerId}`;
   }

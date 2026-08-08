@@ -1,11 +1,13 @@
 import type { Hono } from "hono";
-import type { JsonGet, JsonPost, ParamGet, ParamPost } from "./common.js";
+import type { JsonGet, JsonPost, ParamGet, ParamJsonPost, ParamPost } from "./common.js";
 import type {
   ProviderCatalogEntryWire,
   ProviderHealthResponse,
   ProviderRegistry,
   ProviderStatusResponse,
   RegisterProviderRequest,
+  SetFailModeRequest,
+  SetFailModeResponse,
 } from "../provider.js";
 
 // ─── apps/service-providers typed route contract (Phase 7) ────────────────────
@@ -35,6 +37,9 @@ export type ProviderSchema = {
   };
   "/providers/:id/recover": {
     $post: ParamPost<{ id: string }, ProviderStatusResponse>;
+  };
+  "/providers/:id/fail-mode": {
+    $post: ParamJsonPost<{ id: string }, SetFailModeRequest, SetFailModeResponse, 200>;
   };
 };
 

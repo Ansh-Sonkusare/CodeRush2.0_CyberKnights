@@ -12,16 +12,21 @@ import {
   LedgerExportSchema,
   LedgerRowSchema,
   ProviderCatalogEntryWireListSchema,
+  ReconciliationReportWireSchema,
   RejectResponseSchema,
   RunResponseSchema,
+  SetFailModeResponseSchema,
   TaskGraphSchema,
   type ExecutionStatusWire,
   type LedgerExport,
   type LedgerRow,
   type ProviderCatalogEntryWire,
+  type ProviderFailMode,
+  type ReconciliationReportWire,
   type RejectResponse,
   type RunRequest,
   type RunResponse,
+  type SetFailModeResponse,
   type TaskGraph,
 } from "@sentinel/schemas";
 
@@ -111,6 +116,29 @@ export async function setProviderFailed(id: string, failed: boolean): Promise<vo
     `/api/providers/${encodeURIComponent(id)}/${failed ? "fail" : "recover"}`,
     {},
     z.object({ provider_id: z.string(), failed: z.boolean() }).strict(),
+  );
+}
+
+/**
+ * POST /api/providers/:id/fail-mode — MVD "fail after payment" knob.
+ * `mode: null` clears the fail mode back to normal.
+ */
+export function setProviderFailMode(
+  id: string,
+  mode: ProviderFailMode | null,
+): Promise<SetFailModeResponse> {
+  return postJson(
+    `/api/providers/${encodeURIComponent(id)}/fail-mode`,
+    { mode },
+    SetFailModeResponseSchema,
+  );
+}
+
+/** GET /api/ledger/task/:taskId/reconcile — reconciliation report for one task. */
+export function getReconcile(taskId: string): Promise<ReconciliationReportWire> {
+  return getJson(
+    `/api/ledger/task/${encodeURIComponent(taskId)}/reconcile`,
+    ReconciliationReportWireSchema,
   );
 }
 

@@ -27,6 +27,28 @@ export const TaskGraphSchema = z
 
 export type TaskGraph = z.infer<typeof TaskGraphSchema>;
 
+// ─── Route profile ────────────────────────────────────────────────────────────
+// The routing preference a run should favor. The planner (or a keyword
+// heuristic) proposes a profile; optional everywhere — absence means the
+// router falls back to its defaults (balanced).
+
+export const RouteProfileSchema = z.enum([
+  "price",
+  "quality",
+  "latency",
+  "balanced",
+]);
+export type RouteProfile = z.infer<typeof RouteProfileSchema>;
+
+export const RouteProfileResolutionSchema = z
+  .object({
+    profile: RouteProfileSchema,
+    source: z.enum(["llm", "heuristic"]),
+  })
+  .strict();
+
+export type RouteProfileResolution = z.infer<typeof RouteProfileResolutionSchema>;
+
 // ─── Planner output (LLM-facing) ─────────────────────────────────────────────
 // Separate from TaskGraph: planner output is untrusted LLM input and must be
 // validated before being converted to a TaskGraph. budget_cap / scope / wallet
@@ -49,6 +71,7 @@ export const PlannerGraphSchema = z
     name: z.string(),
     goal: z.string(),
     steps: z.array(PlannerStepSchema).min(1),
+    route_profile: RouteProfileResolutionSchema.optional(),
   })
   .strict();
 
@@ -79,6 +102,15 @@ export const PLANNER_GRAPH_JSON_SCHEMA: Record<string, unknown> = {
           capability: { type: "string", enum: [...ROUTEABLE_CAPABILITIES] },
           dependsOn: { type: "array", items: { type: "string" } },
         },
+      },
+    },
+    route_profile: {
+      type: "object",
+      additionalProperties: false,
+      required: ["profile", "source"],
+      properties: {
+        profile: { type: "string", enum: ["price", "quality", "latency", "balanced"] },
+        source: { type: "string", enum: ["llm", "heuristic"] },
       },
     },
   },
@@ -183,6 +215,7 @@ export const PlanOutcomeSchema = z.discriminatedUnion("source", [
     .object({
       source: z.literal("planner"),
       graph: TaskGraphSchema,
+      route_profile: RouteProfileResolutionSchema.optional(),
     })
     .strict(),
   z
@@ -190,6 +223,7 @@ export const PlanOutcomeSchema = z.discriminatedUnion("source", [
       source: z.literal("fallback"),
       graph: TaskGraphSchema,
       reason: z.string(),
+      route_profile: RouteProfileResolutionSchema.optional(),
     })
     .strict(),
 ]);

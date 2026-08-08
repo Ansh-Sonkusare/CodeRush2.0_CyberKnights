@@ -18,9 +18,9 @@ import {
   type TaskStep,
   type WsMessage,
 } from "@sentinel/schemas";
+import { createRouter, weightsForProfile, type Router } from "@sentinel/router";
 import { Treasury } from "@sentinel/treasury";
 import type { LedgerStore } from "@sentinel/ledger";
-import type { Router } from "@sentinel/router";
 import type { X402Client } from "@sentinel/x402-client";
 import { nodeMachine, type NodeOutput } from "./nodeMachine.js";
 import { taskMachine, type TaskEvent } from "./taskMachine.js";
@@ -47,8 +47,13 @@ export interface TaskRunnerOptions {
    * Router + catalog adapters are resolved at run() time (thunks) so a
    * refreshed provider catalog — fail/recover demo knobs included — is
    * honoured on every run, not just whatever was loaded at boot.
+   *
+   * `router` now receives the task goal so the factory can apply
+   * goal-derived weights (weightsForGoal) before the plan returns a
+   * route_profile; the task machine rebuildss it once the LLM-supplied
+   * profile is known.
    */
-  router: () => Router;
+  router: (goal: string) => Router;
   adapters: () => ProviderAdapter[];
   plan: (goal: string, taskId: string) => Promise<PlanOutcome>;
   broadcast: (msg: WsMessage) => void;
@@ -142,7 +147,7 @@ export function createTaskRunner(options: TaskRunnerOptions): TaskRunner {
       const cap = request.cap === undefined ? DEFAULT_RUN_CAP : microAlgo(BigInt(request.cap));
       const treasury = new Treasury(runTaskId, cap);
 
-      const router = options.router();
+      const router = options.router(request.goal);
       const adapters = options.adapters();
 
       const deps = {
@@ -171,6 +176,17 @@ export function createTaskRunner(options: TaskRunnerOptions): TaskRunner {
           plan: options.plan,
           broadcast: options.broadcast,
           spawnReady: (ready) => spawnReady(handle, ready),
+          /**
+           * Rebuild the run-local router with profile-aware weights once the
+           * planner returns a route_profile. Mutates handle.deps.router so all
+           * subsequent router.select() calls (retries, fallbacks) use the
+           * profile-aware weights for the rest of this run.
+           */
+          rebuildRouter: (profile) => {
+            handle.deps.router = createRouter(handle.deps.adapters, {
+              weights: weightsForProfile(profile),
+            });
+          },
         },
       });
 
@@ -211,6 +227,7 @@ export function createTaskRunner(options: TaskRunnerOptions): TaskRunner {
       };
       if (ctx.graph !== undefined) status.graph = ctx.graph;
       if (ctx.planSource !== undefined) status.planSource = ctx.planSource;
+      if (ctx.route_profile !== undefined) status.route_profile = ctx.route_profile;
       if (ctx.pauseInfo !== undefined) status.pauseInfo = ctx.pauseInfo;
       if (ctx.finishedAt !== undefined) status.finishedAt = ctx.finishedAt;
       return status;

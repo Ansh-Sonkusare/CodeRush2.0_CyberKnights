@@ -1,13 +1,13 @@
 import { serve } from "@hono/node-server";
 import { mkdirSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { loadConfig } from "@sentinel/config";
+import { dirname } from "node:path";
+import { loadConfig, resolveLedgerPath } from "@sentinel/config";
 import { createLedgerStore } from "@sentinel/ledger";
 import { createGatewayApp } from "./app.js";
 import { createWsHub } from "./wsHub.js";
 
 const config = loadConfig();
-const ledgerPath = resolve(config.ledgerPath);
+const ledgerPath = resolveLedgerPath(config);
 mkdirSync(dirname(ledgerPath), { recursive: true });
 const ledger = createLedgerStore(ledgerPath);
 const app = createGatewayApp(config, ledger);

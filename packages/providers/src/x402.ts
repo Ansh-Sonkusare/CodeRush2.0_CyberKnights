@@ -9,6 +9,9 @@ import {
   type ProviderAdapter,
   type ProviderCatalogEntry,
   type ProviderError,
+  type ProviderFailMode,
+  type ProviderKind,
+  type ProviderMode,
   type QuoteResponse,
   type Result,
 } from "@sentinel/schemas";
@@ -47,6 +50,13 @@ export class X402ProviderAdapter implements ProviderAdapter {
   readonly baseUrl: string;
   readonly role: "primary" | "backup";
   readonly integration = "x402" as const;
+  readonly kind?: ProviderKind;
+  readonly mode?: ProviderMode;
+  readonly failMode?: ProviderFailMode;
+  readonly scheme?: "exact" | "upto";
+  readonly uptoActual?: MicroAlgo;
+  readonly priceDriftPct?: number;
+  readonly network?: string;
 
   constructor(
     entry: ProviderCatalogEntry,
@@ -59,6 +69,13 @@ export class X402ProviderAdapter implements ProviderAdapter {
     this.qualityScore = entry.quality_score;
     this.baseUrl = entry.base_url;
     this.role = entry.role ?? "primary";
+    if (entry.kind !== undefined) this.kind = entry.kind;
+    if (entry.mode !== undefined) this.mode = entry.mode;
+    if (entry.failMode !== undefined) this.failMode = entry.failMode;
+    if (entry.scheme !== undefined) this.scheme = entry.scheme;
+    if (entry.uptoActual !== undefined) this.uptoActual = microAlgo(entry.uptoActual);
+    if (entry.priceDriftPct !== undefined) this.priceDriftPct = entry.priceDriftPct;
+    if (entry.network !== undefined) this.network = entry.network;
   }
 
   async quote(_goal: string): Promise<Result<QuoteResponse, ProviderError>> {

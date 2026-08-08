@@ -33,3 +33,10 @@ export type ParamPost<Param, Output> = {
   outputFormat: "json";
   status: 200;
 };
+
+export type ParamJsonPost<Param, Input, Output, Status extends StatusCode> = {
+  input: { param: Param; json: Input };
+  output: Output;
+  outputFormat: "json";
+  status: Status;
+};

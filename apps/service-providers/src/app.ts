@@ -4,7 +4,12 @@ import { z } from "zod";
 import {
   CapabilitySchema,
   RegisterProviderRequestSchema,
+  SetFailModeRequestSchema,
+  SetFailModeResponseSchema,
+  type ProviderAdapter,
+  type ProviderCatalogEntryWire,
   type ProviderEnv,
+  type ProviderFailMode,
   type ProviderRegistry,
   type ProviderSchema,
 } from "@sentinel/schemas";
@@ -16,6 +21,12 @@ import { MockProvider } from "./providers/mock.js";
 // carries it as a decimal string (see ProviderCatalogEntryWireSchema).
 // toWire/fromWire live in @sentinel/providers so the orchestrator can reuse the
 // exact same conversions when building routeable adapters from the catalog.
+//
+// toWire only emits the base catalog fields — kind/mode/scheme/network/failMode
+// are catalog metadata the adapter carries. This module re-merges them into the
+// wire responses (the wire schema declares all of them optional) so GET
+// /providers is a faithful readout of catalog.json, and the runtime fail-mode
+// knob set via POST /providers/:id/fail-mode shows up on the next read.
 
 const paramIdSchema = z.object({ id: z.string().min(1) });
 const paramCapabilitySchema = z.object({ capability: CapabilitySchema });
@@ -32,8 +43,43 @@ function isFailed(adapter: unknown, registry: ProviderRegistry, providerId: stri
   return registry.isFailed(providerId);
 }
 
+/** Current fail-mode knob for an adapter: MockProviders keep it on the adapter
+ * itself (the runtime knob); every other adapter holds it in the local map. */
+function effectiveFailMode(
+  adapter: ProviderAdapter,
+  failModes: ReadonlyMap<string, ProviderFailMode | null>,
+): ProviderFailMode | undefined {
+  if (adapter instanceof MockProvider) return adapter.failModeValue ?? undefined;
+  return failModes.get(adapter.providerId) ?? undefined;
+}
+
+/** Full catalog wire entry for one adapter — base fields from toWire plus the
+ * catalog metadata and the live failed/failMode demo knobs. */
+function toWireEntry(
+  adapter: ProviderAdapter,
+  registry: ProviderRegistry,
+  failModes: ReadonlyMap<string, ProviderFailMode | null>,
+): ProviderCatalogEntryWire {
+  const entry: ProviderCatalogEntryWire = {
+    ...toWire(adapter),
+    failed: isFailed(adapter, registry, adapter.providerId),
+  };
+  if (adapter.kind !== undefined) entry.kind = adapter.kind;
+  if (adapter.mode !== undefined) entry.mode = adapter.mode;
+  if (adapter.scheme !== undefined) entry.scheme = adapter.scheme;
+  if (adapter.uptoActual !== undefined) entry.uptoActual = adapter.uptoActual.toString();
+  if (adapter.priceDriftPct !== undefined) entry.priceDriftPct = adapter.priceDriftPct;
+  if (adapter.network !== undefined) entry.network = adapter.network;
+  const failMode = effectiveFailMode(adapter, failModes);
+  if (failMode !== undefined) entry.failMode = failMode;
+  return entry;
+}
+
 export function createProvidersApp(registry: ProviderRegistry) {
   const app = new Hono<ProviderEnv, ProviderSchema>();
+  // Runtime fail-mode demo knobs for adapters that don't hold one themselves
+  // (remote/external providers). MockProviders keep theirs on the adapter.
+  const failModes = new Map<string, ProviderFailMode | null>();
   app.use("*", (c, next) => {
     c.set("registry", registry);
     return next();
@@ -41,13 +87,14 @@ export function createProvidersApp(registry: ProviderRegistry) {
 
   // Full registry view (includes all providers — ops/demo visibility).
   // `failed` reflects the adapter's own outage state for mocks, or the
-  // registry knob for remote providers.
+  // registry knob for remote providers. Catalog metadata (kind/mode/scheme/
+  // network) and the live failMode knob are merged in via toWireEntry.
   app.get("/providers", (c) =>
     c.json(
       c
         .get("registry")
         .list()
-        .map((a) => ({ ...toWire(a), failed: isFailed(a, c.get("registry"), a.providerId) })),
+        .map((a) => toWireEntry(a, c.get("registry"), failModes)),
     ),
   );
 
@@ -77,7 +124,7 @@ export function createProvidersApp(registry: ProviderRegistry) {
         c
           .get("registry")
           .findByCapability(capability)
-          .map((a) => ({ ...toWire(a), failed: isFailed(a, c.get("registry"), a.providerId) })),
+          .map((a) => toWireEntry(a, c.get("registry"), failModes)),
       );
     },
   );
@@ -105,6 +152,42 @@ export function createProvidersApp(registry: ProviderRegistry) {
   // For RemoteProviderAdapters: falls back to the registry's markFailed/recover
   // (routing exclusion), which is the right model for a genuinely dead remote —
   // you'd have no other way to signal the failure from this service.
+
+  // ─── Fail-mode knob (WS-F / WS-G) ─────────────────────────────────────────
+  // POST /providers/:id/fail-mode — the MVD "fail after payment" demo knob.
+  // Sets a per-provider fail mode; `{ mode: null }` clears it. For in-process
+  // MockProviders the knob lives on the adapter; every other adapter keeps it
+  // in the local map (merged into GET /providers via toWireEntry).
+
+  app.post(
+    "/providers/:id/fail-mode",
+    zValidator("param", paramIdSchema),
+    zValidator("json", SetFailModeRequestSchema),
+    (c) => {
+      const reg = c.get("registry");
+      const { id } = c.req.valid("param");
+      const { mode } = c.req.valid("json");
+      const adapter = reg.get(id);
+      if (!adapter) return c.json({ message: `unknown provider "${id}"` }, 404);
+      if (adapter instanceof MockProvider) {
+        adapter.setFailMode(mode);
+      } else {
+        failModes.set(id, mode);
+      }
+      const checked = SetFailModeResponseSchema.safeParse({ provider_id: id, failMode: mode });
+      if (!checked.success) {
+        return c.json(
+          {
+            message:
+              `internal fail-mode error: ` +
+              checked.error.issues.map((i) => i.message).join("; "),
+          },
+          500,
+        );
+      }
+      return c.json(checked.data, 200);
+    },
+  );
 
   app.post(
     "/providers/:id/fail",

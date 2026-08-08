@@ -43,8 +43,8 @@ export interface OrchestratorAppDeps {
    * the fail/recover demo knobs take effect on the next run.
    */
   refreshProviders: () => Promise<void>;
-  /** Router resolved at run() time (rebuilt after each refresh). */
-  router: () => Router;
+  /** Goal-aware router factory — called once per run with the task goal. */
+  router: (goal: string) => Router;
   /** Routeable catalog adapters resolved at run() time (excludes failed). */
   adapters: () => ProviderAdapter[];
 }

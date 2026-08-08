@@ -38,4 +38,5 @@ export interface ScopedCapability {
   readonly nodeId: TaskNodeId;
   readonly providerId: string;
   readonly maxAmount: MicroAlgo;
+  readonly network?: string;
 }

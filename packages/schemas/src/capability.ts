@@ -17,18 +17,14 @@ export const CAPABILITIES = [
 ] as const;
 
 /**
- * Capabilities that actually have registered providers in this build.
- * The planner must only emit steps from this set — the legacy placeholder
- * capabilities (search/extract/…) exist in the schema enum for backward
- * compatibility but no adapter sells them, so a plan that proposes one would
- * fail at routing. Keeping the planner constrained here is what makes the
- * LLM-generated plan routeable end-to-end.
+ * Capabilities that have registered providers in this build.
+ * The catalog (apps/service-providers/data/catalog.json) seeds every capability
+ * with ≥2 mock providers (primary + fallback) plus the real Zerion/LLM tiers for
+ * the core three, so the planner may emit any step from CAPABILITIES and still
+ * route end-to-end. The MVD 5-step parallel demo graph
+ * (search → extract ‖ translate → rank → verify) depends on this widening.
  */
-export const ROUTEABLE_CAPABILITIES = [
-  "fetch_wallet_data",
-  "generate_summary",
-  "score_credit",
-] as const;
+export const ROUTEABLE_CAPABILITIES = [...CAPABILITIES] as const;
 
 export const CapabilitySchema = z.enum(CAPABILITIES);
 export type Capability = z.infer<typeof CapabilitySchema>;
@@ -144,6 +140,7 @@ export const TermsResponseSchema = z
     schema: z.string(),
     terms_expires_at: z.string(),
     payment_required: z.boolean(),
+    network: z.string().optional(),
   })
   .strict();
 

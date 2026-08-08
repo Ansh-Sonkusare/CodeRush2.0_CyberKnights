@@ -14,6 +14,7 @@ import {
   type ExecutionStatusWire,
   type NodeStateWire,
   type PauseInfoWire,
+  type RouteProfileResolution,
   type TaskGraph,
   type WsMessageWire,
 } from "@sentinel/schemas";
@@ -41,14 +42,21 @@ export interface BlockedEntry {
 export interface UiEvent {
   at: string;
   text: string;
+  /** Highlight style for a re-routed transition (node_state retry frame). */
+  tag?: "reroute";
+  /** The node that re-routed — lets the events tab surface its route_reason. */
+  nodeId?: string;
 }
 
 export interface UiState {
   taskId: string | null;
   goal: string | null;
   planSource: "planner" | "fallback" | null;
+  routeProfile: RouteProfileResolution | null;
   graph: TaskGraph | null;
   nodes: Record<string, NodeStateWire>;
+  /** nodeId → provider it fell back to after a failed attempt. */
+  reroutes: Record<string, string>;
   budget: BudgetStatusWire | null;
   pauseInfo: PauseInfoWire | null;
   status: UiTaskStatus;
@@ -61,8 +69,10 @@ const DEFAULT_STATE: UiState = {
   taskId: null,
   goal: null,
   planSource: null,
+  routeProfile: null,
   graph: null,
   nodes: {},
+  reroutes: {},
   budget: null,
   pauseInfo: null,
   status: "idle",
@@ -122,6 +132,8 @@ function applyEvent(prev: UiState, frame: WsMessageWire): UiState {
         goal: frame.goal,
         graph: frame.graph,
         planSource: frame.planSource,
+        routeProfile: frame.route_profile ?? null,
+        reroutes: {},
         status: "running",
         events: pushEvent(
           prev,
@@ -143,17 +155,44 @@ function applyEvent(prev: UiState, frame: WsMessageWire): UiState {
               },
             ]
           : prev.violations;
+
+      // A re-route is a provider change on a node that had already touched a
+      // provider (failed/blocked/quoted) — never the initial pending→quoted hop.
+      const prevNode = prev.nodes[frame.nodeId];
+      const prevProvider =
+        prevNode !== undefined && "providerId" in prevNode ? prevNode.providerId : undefined;
+      const newProvider = "providerId" in frame.state ? frame.state.providerId : undefined;
+      const isReroute =
+        prevProvider !== undefined && newProvider !== undefined && prevProvider !== newProvider;
+      const reroutes = isReroute
+        ? { ...prev.reroutes, [frame.nodeId]: newProvider }
+        : prev.reroutes;
+
+      const baseEvents = pushEvent(
+        prev,
+        frame.at,
+        `${frame.nodeId} → ${frame.state.kind}${kindDetail(frame.state)}`,
+      );
+      const events = isReroute
+        ? [
+            ...baseEvents,
+            {
+              at: frame.at,
+              text: `${frame.nodeId} re-routed → ${newProvider} (was ${prevProvider})`,
+              tag: "reroute" as const,
+              nodeId: frame.nodeId,
+            },
+          ].slice(-MAX_EVENTS)
+        : baseEvents;
+
       return {
         ...prev,
         nodes,
+        reroutes,
         budget: frame.budget,
         status: prev.status === "planning" ? "running" : prev.status,
         violations,
-        events: pushEvent(
-          prev,
-          frame.at,
-          `${frame.nodeId} → ${frame.state.kind}${kindDetail(frame.state)}`,
-        ),
+        events,
       };
     }
 
@@ -282,6 +321,7 @@ export function useWs() {
       goal: status.graph?.goal ?? prev.goal,
       graph: status.graph ?? prev.graph,
       planSource: status.planSource ?? prev.planSource,
+      routeProfile: status.route_profile ?? prev.routeProfile,
       nodes: { ...status.nodes, ...prev.nodes },
       budget: status.budget,
       pauseInfo: status.pauseInfo ?? null,

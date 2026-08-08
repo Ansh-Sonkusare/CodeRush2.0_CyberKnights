@@ -3,6 +3,7 @@ import type { Capability } from "./capability.js";
 import { CapabilitySchema } from "./capability.js";
 import type { MicroAlgo } from "./branded.js";
 import type { Result } from "./result.js";
+import { PaymentSchemeSchema } from "./guard.js";
 
 // ─── Provider integration marker ──────────────────────────────────────────────
 // "mock" = an in-process/remote provider speaking the plain /quote + /deliver +
@@ -13,6 +14,64 @@ import type { Result } from "./result.js";
 
 export const ProviderIntegrationSchema = z.enum(["mock", "x402"]);
 export type ProviderIntegration = z.infer<typeof ProviderIntegrationSchema>;
+
+// ─── Provider kind / mode / fail-mode ─────────────────────────────────────────
+// `kind` classifies a provider for the catalog readout and adapter build.
+// `mode` marks an adversarial provider and which attack it performs (guard demo).
+// `failMode` is the MVD fail-after-payment demo knob — how the provider fails.
+
+export const ProviderKindSchema = z.enum([
+  "mock",
+  "adversarial",
+  "zerion",
+  "llm-summary",
+  "llm-credit",
+]);
+export type ProviderKind = z.infer<typeof ProviderKindSchema>;
+
+export const ProviderModeSchema = z.enum([
+  "budget_mutation",
+  "scope_expansion",
+  "prompt_injection",
+  "receipt_forgery",
+]);
+export type ProviderMode = z.infer<typeof ProviderModeSchema>;
+
+export const ProviderFailModeSchema = z.enum([
+  "after_402",
+  "deliver",
+  "rate_limit",
+  "price_drift",
+  "network_mismatch",
+]);
+export type ProviderFailMode = z.infer<typeof ProviderFailModeSchema>;
+
+// ─── Provider catalog file entry (catalog.json) ───────────────────────────────
+// The on-disk / seed shape for WS-A's catalog.json. JSON can't hold bigint, so
+// money is a decimal string here; the loader converts to the in-process entry.
+// `kind` is required — the file declares what each provider really is.
+
+export const ProviderCatalogFileEntrySchema = z
+  .object({
+    provider_id: z.string(),
+    capability: CapabilitySchema,
+    price_micro_algo: z.string().regex(/^\d+$/, "microAlgo as decimal string"),
+    latency_hint_ms: z.number().int(),
+    quality_score: z.number().min(0).max(1),
+    base_url: z.string().url(),
+    role: z.enum(["primary", "backup"]).optional(),
+    integration: ProviderIntegrationSchema.optional(),
+    kind: ProviderKindSchema,
+    mode: ProviderModeSchema.optional(),
+    failMode: ProviderFailModeSchema.optional(),
+    scheme: PaymentSchemeSchema.optional(),
+    uptoActual: z.string().regex(/^\d+$/, "microAlgo as decimal string").optional(),
+    priceDriftPct: z.number().min(0).max(100).optional(),
+    network: z.string().optional(),
+  })
+  .strict();
+
+export type ProviderCatalogFileEntry = z.infer<typeof ProviderCatalogFileEntrySchema>;
 
 // ─── Provider catalog entry (metadata only, no HTTP) ─────────────────────────
 
@@ -26,6 +85,13 @@ export const ProviderCatalogEntrySchema = z
     base_url: z.string().url(),
     role: z.enum(["primary", "backup"]).optional(),
     integration: ProviderIntegrationSchema.default("mock"),
+    kind: ProviderKindSchema.optional(),
+    mode: ProviderModeSchema.optional(),
+    failMode: ProviderFailModeSchema.optional(),
+    scheme: PaymentSchemeSchema.optional(),
+    uptoActual: z.bigint().optional(),
+    priceDriftPct: z.number().min(0).max(100).optional(),
+    network: z.string().optional(),
   })
   .strict();
 
@@ -49,6 +115,13 @@ export const ProviderCatalogEntryWireSchema = z
     // Registry-local demo knob: whether this provider is currently marked
     // failed (excluded from routing). Absent on entries that can't report it.
     failed: z.boolean().optional(),
+    kind: ProviderKindSchema.optional(),
+    mode: ProviderModeSchema.optional(),
+    failMode: ProviderFailModeSchema.optional(),
+    scheme: PaymentSchemeSchema.optional(),
+    uptoActual: z.string().regex(/^\d+$/, "microAlgo as decimal string").optional(),
+    priceDriftPct: z.number().min(0).max(100).optional(),
+    network: z.string().optional(),
   })
   .strict();
 
@@ -86,6 +159,27 @@ export const ProviderStatusResponseSchema = z
 
 export type ProviderStatusResponse = z.infer<typeof ProviderStatusResponseSchema>;
 
+// ─── Fail-mode knob (WS-F / WS-G) ─────────────────────────────────────────────
+// POST /api/providers/:id/fail-mode body. `{ mode: null }` resets to normal.
+
+export const SetFailModeRequestSchema = z
+  .object({
+    mode: ProviderFailModeSchema.nullable(),
+  })
+  .strict();
+
+export type SetFailModeRequest = z.infer<typeof SetFailModeRequestSchema>;
+
+/** POST /api/providers/:id/fail-mode response — reflects the mode now set. */
+export const SetFailModeResponseSchema = z
+  .object({
+    provider_id: z.string(),
+    failMode: ProviderFailModeSchema.nullable(),
+  })
+  .strict();
+
+export type SetFailModeResponse = z.infer<typeof SetFailModeResponseSchema>;
+
 // Liveness contract a registered remote provider server must speak (GET /health).
 export const RemoteHealthSchema = z
   .object({
@@ -104,6 +198,7 @@ export const ProviderErrorKindSchema = z.enum([
   "deliver_failed",
   "timeout",
   "capability_unsupported",
+  "rate_limited",
   "unknown",
 ]);
 export type ProviderErrorKind = z.infer<typeof ProviderErrorKindSchema>;
@@ -126,6 +221,7 @@ export const QuoteResponseSchema = z
     schema: z.string(),
     terms_expires_at: z.string(),
     payment_required: z.boolean(),
+    network: z.string().optional(),
   })
   .strict();
 
@@ -155,6 +251,14 @@ export interface ProviderAdapter {
   readonly role: "primary" | "backup";
   /** "mock" = /quote+/deliver wire contract; "x402" = pay-per-request resource. */
   readonly integration: ProviderIntegration;
+  // Optional classification / demo metadata carried from the catalog entry.
+  readonly kind?: ProviderKind;
+  readonly mode?: ProviderMode;
+  readonly failMode?: ProviderFailMode;
+  readonly scheme?: "exact" | "upto";
+  readonly uptoActual?: MicroAlgo;
+  readonly priceDriftPct?: number;
+  readonly network?: string;
 
   /** Step 1: get invoice + terms (the 402 challenge). */
   quote(goal: string): Promise<Result<QuoteResponse, ProviderError>>;

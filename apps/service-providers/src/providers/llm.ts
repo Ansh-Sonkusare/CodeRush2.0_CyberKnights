@@ -49,6 +49,11 @@ export interface LLMAdapterConfig {
   readonly maxTokens?: number;
   /** Catalog HTTP surface for this provider (quote/deliver/health routes). */
   readonly surfaceBaseUrl?: string;
+  /** Catalog metadata overrides (from data/catalog.json) — defaults preserved. */
+  readonly providerId?: string;
+  readonly priceHint?: MicroAlgo;
+  readonly latencyHintMs?: number;
+  readonly qualityScore?: number;
 }
 
 const DEFAULT_PROVIDERS_PORT = 4020;
@@ -240,12 +245,20 @@ export abstract class LLMProviderBase implements ProviderAdapter {
 }
 
 export class LLMSummaryProvider extends LLMProviderBase {
-  readonly providerId = "llm-summary";
+  readonly providerId: string;
   readonly capability: Capability = "generate_summary";
-  readonly priceHint: MicroAlgo = microAlgo(1n);
-  readonly latencyHintMs = 500;
-  readonly qualityScore = 0.96;
+  readonly priceHint: MicroAlgo;
+  readonly latencyHintMs: number;
+  readonly qualityScore: number;
   protected readonly schema = SummaryResponseSchema;
+
+  constructor(config: LLMAdapterConfig = { baseUrl: undefined, apiKey: undefined, model: undefined }) {
+    super(config);
+    this.providerId = config.providerId ?? "llm-summary";
+    this.priceHint = config.priceHint ?? microAlgo(1n);
+    this.latencyHintMs = config.latencyHintMs ?? 500;
+    this.qualityScore = config.qualityScore ?? 0.96;
+  }
 
   protected buildPrompt(input: Record<string, unknown>): string {
     const wallet = findWalletData(input);
@@ -271,12 +284,20 @@ export class LLMSummaryProvider extends LLMProviderBase {
 }
 
 export class LLMCreditScoreProvider extends LLMProviderBase {
-  readonly providerId = "llm-credit-score";
+  readonly providerId: string;
   readonly capability: Capability = "score_credit";
-  readonly priceHint: MicroAlgo = microAlgo(2n);
-  readonly latencyHintMs = 500;
-  readonly qualityScore = 0.96;
+  readonly priceHint: MicroAlgo;
+  readonly latencyHintMs: number;
+  readonly qualityScore: number;
   protected readonly schema = CreditScoreResponseSchema;
+
+  constructor(config: LLMAdapterConfig = { baseUrl: undefined, apiKey: undefined, model: undefined }) {
+    super(config);
+    this.providerId = config.providerId ?? "llm-credit-score";
+    this.priceHint = config.priceHint ?? microAlgo(2n);
+    this.latencyHintMs = config.latencyHintMs ?? 500;
+    this.qualityScore = config.qualityScore ?? 0.96;
+  }
 
   protected buildPrompt(input: Record<string, unknown>): string {
     const wallet = findWalletData(input);

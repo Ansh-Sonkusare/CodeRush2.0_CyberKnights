@@ -242,8 +242,19 @@ function rawFromEnv(env: Readonly<Record<string, string | undefined>>): Record<s
  * empty ledger while the orchestrator wrote real rows. Shared ledger = shared
  * file. Absolute paths are passed through untouched.
  */
-function resolveLedgerPath(raw: string): string {
+function resolveLedgerPathRaw(raw: string): string {
   return resolve(ROOT_DIR, raw);
+}
+
+/**
+ * Public entry point: the absolute, repo-root-resolved ledger path from a
+ * validated AppConfig. `loadConfigSafe` has already resolved `config.ledgerPath`
+ * against the repo root, so this is idempotent and trivial — it exists so the
+ * gateway and orchestrator call sites are explicit and never re-resolve from
+ * their own cwd (which would silently fork the shared SQLite file).
+ */
+export function resolveLedgerPath(config: AppConfig): string {
+  return config.ledgerPath;
 }
 
 /**
@@ -272,7 +283,7 @@ export function loadConfigSafe(
   if (env === process.env) loadRootEnvFile();
   const parsed = AppConfigSchema.safeParse(rawFromEnv(env));
   if (parsed.success) {
-    return ok({ ...parsed.data, ledgerPath: resolveLedgerPath(parsed.data.ledgerPath) });
+    return ok({ ...parsed.data, ledgerPath: resolveLedgerPathRaw(parsed.data.ledgerPath) });
   }
 
   const fieldErrors = new Map<string, string>();

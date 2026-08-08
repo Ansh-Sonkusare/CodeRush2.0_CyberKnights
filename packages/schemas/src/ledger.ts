@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { CapabilitySchema } from "./capability.js";
-import { PolicyViolationSchema } from "./guard.js";
+import { PaymentSchemeSchema, PolicyViolationSchema } from "./guard.js";
+import { microAlgoDecimalString } from "./node-state.js";
 
 export const SCHEMA_VERSION = "2.0.0";
 
@@ -139,3 +140,101 @@ export function createLedgerRow(input: NewLedgerRowInput): LedgerRow {
     created_at: new Date().toISOString(),
   };
 }
+
+// ─── Reconciliation report ────────────────────────────────────────────────────
+// Proves "every paid request tied to a result or declared failure": one row per
+// paid ledger entry plus totals for the dup-payment and budget-adherence
+// metrics (WS-D builds this, WS-F renders it).
+
+export const ReconciliationRowSchema = z
+  .object({
+    ledger_id: z.string(),
+    node_id: z.string(),
+    capability: CapabilitySchema,
+    provider_id: z.string(),
+    scheme: PaymentSchemeSchema.optional(),
+    quoted_amount: z.bigint(),
+    actual_amount: z.bigint().optional(),
+    idempotency_key: z.string(),
+    tx_ref: z.string().optional(),
+    outcome: LedgerOutcomeSchema,
+    violations: z.array(PolicyViolationSchema).optional(),
+    stages: z.record(z.string(), LedgerStageSchema),
+    created_at: z.string(),
+  })
+  .strict();
+
+export type ReconciliationRow = z.infer<typeof ReconciliationRowSchema>;
+
+export const ReconciliationTotalsSchema = z
+  .object({
+    total_paid: z.bigint(),
+    success_count: z.number().int().min(0),
+    declared_failure_count: z.number().int().min(0),
+    pending_count: z.number().int().min(0),
+    dup_payment_rate: z.number().min(0).max(1),
+    budget_adherence_ok: z.boolean(),
+  })
+  .strict();
+
+export type ReconciliationTotals = z.infer<typeof ReconciliationTotalsSchema>;
+
+export const ReconciliationReportSchema = z
+  .object({
+    task_id: z.string(),
+    generated_at: z.string(),
+    row_count: z.number().int().min(0),
+    rows: z.array(ReconciliationRowSchema),
+    totals: ReconciliationTotalsSchema,
+  })
+  .strict();
+
+export type ReconciliationReport = z.infer<typeof ReconciliationReportSchema>;
+
+// ─── Wire variants ────────────────────────────────────────────────────────────
+// Money as decimal strings (jsonStringify) — same shape, strings not bigint.
+
+export const ReconciliationRowWireSchema = z
+  .object({
+    ledger_id: z.string(),
+    node_id: z.string(),
+    capability: CapabilitySchema,
+    provider_id: z.string(),
+    scheme: PaymentSchemeSchema.optional(),
+    quoted_amount: microAlgoDecimalString,
+    actual_amount: microAlgoDecimalString.optional(),
+    idempotency_key: z.string(),
+    tx_ref: z.string().optional(),
+    outcome: LedgerOutcomeSchema,
+    violations: z.array(PolicyViolationSchema).optional(),
+    stages: z.record(z.string(), LedgerStageSchema),
+    created_at: z.string(),
+  })
+  .strict();
+
+export type ReconciliationRowWire = z.infer<typeof ReconciliationRowWireSchema>;
+
+export const ReconciliationTotalsWireSchema = z
+  .object({
+    total_paid: microAlgoDecimalString,
+    success_count: z.number().int().min(0),
+    declared_failure_count: z.number().int().min(0),
+    pending_count: z.number().int().min(0),
+    dup_payment_rate: z.number().min(0).max(1),
+    budget_adherence_ok: z.boolean(),
+  })
+  .strict();
+
+export type ReconciliationTotalsWire = z.infer<typeof ReconciliationTotalsWireSchema>;
+
+export const ReconciliationReportWireSchema = z
+  .object({
+    task_id: z.string(),
+    generated_at: z.string(),
+    row_count: z.number().int().min(0),
+    rows: z.array(ReconciliationRowWireSchema),
+    totals: ReconciliationTotalsWireSchema,
+  })
+  .strict();
+
+export type ReconciliationReportWire = z.infer<typeof ReconciliationReportWireSchema>;

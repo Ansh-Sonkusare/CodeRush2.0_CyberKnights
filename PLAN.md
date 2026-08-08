@@ -70,10 +70,9 @@ All `.strict()`.
 - New `ProviderCatalogFileEntrySchema` (`.strict()`): `ProviderCatalogEntry` fields + `kind`
   (`mock | adversarial | zerion | llm-summary | llm-credit`), optional `mode`
   (`budget_mutation | scope_expansion | prompt_injection | receipt_forgery`), plus MVD knobs:
-  `failMode` (`after_402 | deliver | rate_limit | price_drift | network_mismatch`), `scheme`
-  (`exact | upto`), `uptoActual`, `priceDriftPct`, `network`.
-- `rate_limited` provider error kind; `network` on Quote/Capability; `PaymentReceipt` +=
-  `scheme, actualAmount`.
+  `failMode` (`after_402 | deliver | rate_limit | price_drift`), `scheme`
+  (`exact | upto`), `uptoActual`, `priceDriftPct`.
+- `rate_limited` provider error kind; `PaymentReceipt` += `scheme, actualAmount`.
 - `ReconciliationReportSchema` + row shape.
 - **Gate 0**: `pnpm -r typecheck` + existing suite green. Publish the contracts below for Wave 1.
 
@@ -103,8 +102,6 @@ Depends on: `RouteProfileSchema` (Wave 0). Owns: `packages/router/**`.
   raised qualityThreshold, latency → `{0.2, 0.7, 0.1}`, balanced → defaults.
 - `resolveWeights(goal, llmProfile?)` — LLM profile wins, heuristic is the fallback.
 - `WeightedRouter` / `createRouter` unchanged — they just receive different weights per run.
-- `select()` gains a `network` filter parameter (multi-network prep) — keep it optional so Wave 1
-  callers compile unchanged.
 - New test file: `tests/router.test.ts` (`weightsForGoal`/`weightsForProfile`/`resolveWeights`;
   WeightedRouter picks the cheap provider under price weights and the premium one under quality).
 - **Gate**: typecheck + router tests.
@@ -166,7 +163,7 @@ Owns: `packages/orchestrator/**`, `packages/x402-client/**`, `apps/service-orche
 - **Gate**: typecheck + mvd/flow tests; manual full-stack run.
 
 #### WS-F — UI showcase (`apps/web/**`)
-Depends on: Wave 0 schemas (`route_profile` on ExecutionStatus, scheme/network), WS-A fail-mode
+Depends on: Wave 0 schemas (`route_profile` on ExecutionStatus, scheme), WS-A fail-mode
 endpoint, WS-D reconcile endpoint. Owns: `apps/web/**`.
 Every feature derives wire shapes via `.pick()/.extend()` from `packages/schemas`; WS frames remain
 the same discriminated unions.
@@ -174,7 +171,7 @@ the same discriminated unions.
 **MVD 1 (5-step, ≥3 providers, parallel + fallback)**
 - TaskGraph renders the 5-step DAG (`search → extract ‖ translate → rank → verify`); add
   `CAPABILITY_COLORS` for the 5 new capabilities (`apps/web/src/components/StepNode.tsx:13-22`).
-- Node cards gain selected provider + scheme + network chips and a **fallback indicator**
+- Node cards gain selected provider + scheme chips and a **fallback indicator**
   ("fell back to {provider}") when `excluded`/reroute happened.
 - Sidebar callout: live step count / provider count (≥3).
 
@@ -206,7 +203,7 @@ the same discriminated unions.
 
 **Data-driven catalog**
 - Sidebar catalog panel becomes the `catalog.json` readout: kind badges (real/mock/adversarial),
-  scheme/network chips, failMode control, price/latency/quality bars.
+  scheme chips, failMode control, price/latency/quality bars.
 
 **Demo presets picker (all criteria)**
 - Sidebar buttons rendered from the existing unrendered `DEMO_FLOWS`: **5-step parallel**,
@@ -216,16 +213,13 @@ the same discriminated unions.
 
 ### Wave 3 — two agents in parallel
 
-#### WS-G — Hard modes + multi-network (`apps/service-providers/src/providers/mock.ts`, `packages/policy-guard/**`, `packages/router/**` (network filter), `tests/hardmode.test.ts`)
-Depends on: WS-A (failMode knobs), WS-B (network filter), WS-E (nodeMachine retry).
+#### WS-G — Hard modes (`apps/service-providers/src/providers/mock.ts`, `packages/policy-guard/**`, `tests/hardmode.test.ts`)
+Depends on: WS-A (failMode knobs), WS-E (nodeMachine retry).
 Owns: `packages/policy-guard/**`, `apps/service-providers/src/providers/mock.ts` (only the rate_limit /
-prompt_injection / receipt_forgery / network_mismatch behaviors), `tests/hardmode.test.ts`. Do **not**
-touch `packages/router/**` beyond calling the network filter WS-B already added.
+prompt_injection / receipt_forgery behaviors), `tests/hardmode.test.ts`.
 - `rate_limit` → retryable + ledger note.
 - `prompt_injection` / `receipt_forgery` → guard blocks with those violation types.
 - Parallel-failure cascade test (branch A blocked, branch B settles).
-- Register 1–2 `algorand:beta` providers in `catalog.json` via WS-A's file format + wire the router
-  network filter + client refusal on cross-network.
 - **Gate**: typecheck + hardmode tests.
 
 #### WS-H — Tests consolidation (`tests/**`)
@@ -238,7 +232,7 @@ does **not** create `tests/hardmode.test.ts` (WS-G owns it) or `tests/mvd.test.t
 
 - CLI: `pnpm eval --trials N --seed S --profile price|quality|balanced`.
 - Seeded held-out subsets (1–3 of N providers per capability), random phase failures, budgets forcing
-  pause/approve, exact/upto + price-drift + multi-network variants.
+  pause/approve, exact/upto + price-drift variants.
 - Metrics: task success, route optimality vs zero-failure optimal, budget adherence (overspend = 0),
   dup-payment rate (unique txRefs/payments = 1.0), settlement correctness, fallback recovery, latency, cost.
 - JSON + summary report. Does **not** edit `.env.example` (WS-J owns it) — only the root `eval` script.
@@ -258,10 +252,10 @@ does **not** create `tests/hardmode.test.ts` (WS-G owns it) or `tests/mvd.test.t
 |---|---|---|
 | `route_profile` on PlanOutcome/PlannerGraph | `{ profile: RouteProfile, source: "llm" \| "heuristic" }` (optional) | WS-C, WS-E, WS-F |
 | `route_profile` on ExecutionStatus | `{ profile, source }` (optional) | WS-F chip |
-| `ProviderCatalogFileEntrySchema` | entry + `kind`/`mode`/`failMode`/`scheme`/`uptoActual`/`priceDriftPct`/`network` | WS-A, WS-E, WS-F, WS-G |
+| `ProviderCatalogFileEntrySchema` | entry + `kind`/`mode`/`failMode`/`scheme`/`uptoActual`/`priceDriftPct` | WS-A, WS-E, WS-F, WS-G |
 | Reconcile route | `GET /api/ledger/task/:taskId/reconcile` → `ReconciliationReportSchema` | WS-F |
 | Fail-mode endpoint | `POST /api/providers/:id/fail-mode` (body: `{ mode }`) | WS-F, WS-G |
-| Router API | `select(cap, exclude?, network?)` + `weightsForGoal/weightsForProfile/resolveWeights` | WS-B exports → WS-E, WS-G |
+| Router API | `select(cap, exclude?)` + `weightsForGoal/weightsForProfile/resolveWeights` | WS-B exports → WS-E |
 | Ledger path | `resolveLedgerPath(config): string` | WS-D exports → WS-E |
 
 ## File-ownership matrix (no two agents touch the same file)

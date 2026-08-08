@@ -8,6 +8,9 @@ import {
   type MicroAlgo,
   type ProviderAdapter,
   type ProviderError,
+  type ProviderFailMode,
+  type ProviderKind,
+  type ProviderMode,
   type QuoteResponse,
   type Result,
 } from "@sentinel/schemas";
@@ -28,6 +31,8 @@ import {
  *   - "scope_expansion": deliver() result carries `wallet_key` → guard blocks
  *     with ViolationType "scope_expansion".
  *   - "normal": well-behaved result, guard passes.
+ *   - "prompt_injection" / "receipt_forgery": carried as metadata only — the
+ *     actual behaviors land in a later wave (WS-G hard modes).
  *
  * `failed` is the demo fail knob. When true, quote() returns a service-level
  * error (simulating HTTP 503 from a real external provider that is down). The
@@ -35,8 +40,12 @@ import {
  * so the node machine's retry/fallback path handles the failure exactly as it
  * would for a real provider outage. This is different from hiding the provider
  * from the router, which would bypass the fallback machinery entirely.
+ *
+ * `failMode` is the MVD fail-after-payment demo knob (see setFailMode). It is
+ * a RUNTIME knob — it never ships in data/catalog.json; catalog entries carry
+ * only the static metadata and the loader leaves the knob at its null default.
  */
-export type MockProviderMode = "normal" | "budget_mutation" | "scope_expansion";
+export type MockProviderMode = "normal" | ProviderMode;
 
 export interface MockProviderSpec {
   readonly providerId: string;
@@ -52,6 +61,20 @@ export interface MockProviderSpec {
    * these routes in-process (see /mock/:id/* in app.ts).
    */
   readonly baseUrl: string;
+  /** primary wins the weighted router on price/quality; backup is the fallback. */
+  readonly role?: "primary" | "backup";
+  /** Catalog classification (mock/adversarial). Defaults to "mock". */
+  readonly kind?: ProviderKind;
+  /** Adversarial attack mode carried from the catalog entry. */
+  readonly failMode?: ProviderFailMode;
+  /** Payment scheme metadata for later waves (exact/upto). */
+  readonly scheme?: "exact" | "upto";
+  /** Actual amount cap for `scheme: "upto"` (MicroAlgo). */
+  readonly uptoActual?: MicroAlgo;
+  /** Price-drift demo metadata for later waves (percent 0..100). */
+  readonly priceDriftPct?: number;
+  /** Network scope metadata (defaults to testnet at the router). */
+  readonly network?: string;
 }
 
 const WALLET_FALLBACK = "ALGO-TEST-000";
@@ -104,10 +127,17 @@ export class MockProvider implements ProviderAdapter {
   readonly latencyHintMs: number;
   readonly qualityScore: number;
   readonly baseUrl: string;
-  readonly role: "primary";
+  readonly role: "primary" | "backup";
   readonly integration: "mock" = "mock";
+  readonly kind?: ProviderKind;
+  readonly mode?: ProviderMode;
+  readonly scheme?: "exact" | "upto";
+  readonly uptoActual?: MicroAlgo;
+  readonly priceDriftPct?: number;
+  readonly network?: string;
   private readonly spec: MockProviderSpec;
   private _failed = false;
+  private _failMode: ProviderFailMode | null;
 
   constructor(spec: MockProviderSpec) {
     this.spec = spec;
@@ -116,8 +146,18 @@ export class MockProvider implements ProviderAdapter {
     this.priceHint = spec.priceHint;
     this.latencyHintMs = spec.latencyHintMs;
     this.qualityScore = spec.qualityScore;
-    this.role = "primary";
+    this.role = spec.role ?? "primary";
     this.baseUrl = spec.baseUrl;
+    this._failMode = spec.failMode ?? null;
+    if (spec.kind !== undefined) this.kind = spec.kind;
+    // "normal" is the well-behaved default — it is not a ProviderMode, so the
+    // public member (matching ProviderAdapter.mode?: ProviderMode) stays
+    // unset. Adversarial modes (budget_mutation/scope_expansion/...) surface.
+    if (spec.mode !== "normal") this.mode = spec.mode;
+    if (spec.scheme !== undefined) this.scheme = spec.scheme;
+    if (spec.uptoActual !== undefined) this.uptoActual = spec.uptoActual;
+    if (spec.priceDriftPct !== undefined) this.priceDriftPct = spec.priceDriftPct;
+    if (spec.network !== undefined) this.network = spec.network;
   }
 
   /** Demo knob: simulate a service-level outage. quote() will return an error. */
@@ -132,6 +172,22 @@ export class MockProvider implements ProviderAdapter {
 
   get isFailed(): boolean {
     return this._failed;
+  }
+
+  /**
+   * MVD fail-after-payment demo knob. Sets the per-provider fail mode; pass
+   * null to clear it back to normal. The read-back accessor is `failModeValue`
+   * (not `failMode`) because `ProviderAdapter.failMode?: ProviderFailMode` is
+   * optional and `exactOptionalPropertyTypes` forbids a getter returning
+   * `ProviderFailMode | null` under that member — see the WS-A handoff.
+   */
+  setFailMode(failMode: ProviderFailMode | null): void {
+    this._failMode = failMode;
+  }
+
+  /** Current fail-mode knob (null = normal). Reads back what setFailMode set. */
+  get failModeValue(): ProviderFailMode | null {
+    return this._failMode;
   }
 
   async quote(_goal: string): Promise<Result<QuoteResponse, ProviderError>> {

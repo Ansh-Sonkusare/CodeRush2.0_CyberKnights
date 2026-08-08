@@ -140,6 +140,9 @@ importers:
       '@sentinel/llm-client':
         specifier: workspace:*
         version: link:../../packages/llm-client
+      '@sentinel/router':
+        specifier: workspace:*
+        version: link:../../packages/router
       '@sentinel/schemas':
         specifier: workspace:*
         version: link:../../packages/schemas

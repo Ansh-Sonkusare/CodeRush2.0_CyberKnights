@@ -7,7 +7,7 @@ import {
   PauseInfoSchema,
   PauseInfoWireSchema,
 } from "./node-state.js";
-import { TaskGraphSchema } from "./planner.js";
+import { RouteProfileResolutionSchema, TaskGraphSchema } from "./planner.js";
 
 /**
  * WsMessage — every message type sent over the gateway WebSocket.
@@ -27,6 +27,7 @@ export const WsMessageSchema = z.discriminatedUnion("event", [
     goal: z.string(),
     graph: TaskGraphSchema,
     planSource: z.enum(["planner", "fallback"]),
+    route_profile: RouteProfileResolutionSchema.optional(),
     at: z.string(),
   }).strict(),
 
@@ -75,6 +76,7 @@ export const WsMessageWireSchema = z.discriminatedUnion("event", [
     goal: z.string(),
     graph: TaskGraphSchema,
     planSource: z.enum(["planner", "fallback"]),
+    route_profile: RouteProfileResolutionSchema.optional(),
     at: z.string(),
   }).strict(),
 

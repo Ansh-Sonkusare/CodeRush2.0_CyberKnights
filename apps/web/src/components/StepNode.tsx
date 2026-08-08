@@ -7,9 +7,17 @@ export interface StepNodeData {
   label: string;
   capability: string;
   nodeState: NodeStateWire;
+  /** Payment scheme + network for the currently-selected provider, when the
+   * catalog advertises them (MVD node-card chips). */
+  providerMeta?: { scheme?: string; network?: string } | null;
+  /** Provider this node fell back to after a failed attempt (from reroute tracking). */
+  fellBackTo?: string | null;
   [key: string]: unknown;
 }
 
+// Covers all 8 routeable capabilities (3 core + the 5 MVD capabilities):
+// search / extract / translate / rank / verify + fetch_wallet_data /
+// generate_summary / score_credit. Ids match packages/schemas capability.ts.
 const CAPABILITY_COLORS: Record<string, string> = {
   search: "#6366f1",
   extract: "#8b5cf6",
@@ -61,10 +69,11 @@ function providerFor(state: NodeStateWire): string | null {
 
 function StepNode({ data }: NodeProps) {
   const d = data as StepNodeData;
-  const { label, capability, nodeState } = d;
+  const { label, capability, nodeState, providerMeta, fellBackTo } = d;
   const capColor = CAPABILITY_COLORS[capability] ?? "#64748b";
   const provider = providerFor(nodeState);
   const tx = txRefFor(nodeState);
+  const fellBack = fellBackTo !== null && fellBackTo !== undefined && fellBackTo === provider;
 
   return (
     <div className={`step-node node-${nodeState.kind}`}>
@@ -90,6 +99,28 @@ function StepNode({ data }: NodeProps) {
           {nodeState.kind === "quoted" && (
             <span className="price">{formatMicroAlgo(nodeState.priceHint)}</span>
           )}
+        </div>
+      )}
+
+      {provider !== null &&
+        (providerMeta?.scheme !== undefined || providerMeta?.network !== undefined) && (
+          <div className="node-chips">
+            {providerMeta.scheme !== undefined && (
+              <span className="node-chip" title="payment scheme">
+                {providerMeta.scheme}
+              </span>
+            )}
+            {providerMeta.network !== undefined && (
+              <span className="node-chip" title="network">
+                {providerMeta.network}
+              </span>
+            )}
+          </div>
+        )}
+
+      {fellBack && (
+        <div className="fallback-badge" title="this node failed once and was re-routed here">
+          fell back to {fellBack}
         </div>
       )}
 
