@@ -1,0 +1,1 @@
+{"root":["./src/app.ts","./src/index.ts","./src/registry.ts","./src/providers/llm.ts","./src/providers/mock.ts","./src/providers/zerion.ts"],"version":"5.9.3"}

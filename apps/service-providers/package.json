@@ -16,6 +16,7 @@
     "@sentinel/schemas": "workspace:*",
     "@sentinel/config": "workspace:*",
     "@sentinel/providers": "workspace:*",
+    "@sentinel/llm-client": "workspace:*",
     "hono": "^4.11.2",
     "zod": "^4.4.3"
   },
