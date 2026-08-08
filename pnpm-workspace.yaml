@@ -9,3 +9,6 @@ allowBuilds:
 
 minimumReleaseAgeExclude:
   - ws@8.21.3
+  - hono@4.13.1
+  - nanoid@3.3.18
+  - caniuse-lite@1.0.30001809
