@@ -16,6 +16,7 @@
     "@sentinel/config": "workspace:*",
     "@sentinel/providers": "workspace:*",
     "@sentinel/schemas": "workspace:*",
+    "@sentinel/llm-client": "workspace:*",
     "@x402/avm": "2.21.0",
     "@x402/core": "2.21.0",
     "@x402/hono": "2.21.0",

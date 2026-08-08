@@ -171,6 +171,9 @@ importers:
       '@sentinel/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@sentinel/llm-client':
+        specifier: workspace:*
+        version: link:../../packages/llm-client
       '@sentinel/providers':
         specifier: workspace:*
         version: link:../../packages/providers

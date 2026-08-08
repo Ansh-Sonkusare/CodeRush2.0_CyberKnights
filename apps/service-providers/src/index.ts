@@ -82,7 +82,9 @@ if (config.x402Mode === "algorand") {
   }
 } else {
   registry.register(
-    new ZerionWalletDataProvider({ baseUrl: undefined, apiKey: config.zerionApiKey }),
+    new ZerionWalletDataProvider({
+      ...(config.zerionApiKey !== undefined ? { apiKey: config.zerionApiKey } : {}),
+    }),
   );
   registry.register(
     new LLMSummaryProvider({
